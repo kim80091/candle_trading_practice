@@ -363,27 +363,78 @@ let tradeHistory = [];
 
 function log(t){const el=document.getElementById('tlog'),d=document.createElement('div');d.textContent=t;el.prepend(d);}
 
-// 특정 캔들 인덱스의 지표 스냅샷
+// 특정 캔들 인덱스의 풍부한 지표 스냅샷
 function snapshot(idx){
   if(idx<0||idx>=candles.length)return null;
   const c=candles[idx];
+  const m5=ma(5,idx), m20=ma(20,idx), m80=ma(80,idx);
+
+  // 직전 5봉 추세 (연속 상승/하락 카운트)
+  let upStreak=0, downStreak=0;
+  for(let i=idx-1;i>=Math.max(0,idx-5);i--){
+    if(candles[i].close>=candles[i].open) upStreak++;
+    else break;
+  }
+  for(let i=idx-1;i>=Math.max(0,idx-5);i--){
+    if(candles[i].close<candles[i].open) downStreak++;
+    else break;
+  }
+
+  // 봉 모양 분석
+  const body=Math.abs(c.close-c.open);
+  const upperWick=c.high-Math.max(c.close,c.open);
+  const lowerWick=Math.min(c.close,c.open)-c.low;
+  const range=c.high-c.low;
+  let candleShape='보통';
+  if(range>0){
+    if(body/range>0.7) candleShape=c.close>=c.open?'장대양봉':'장대음봉';
+    else if(upperWick/range>0.5) candleShape='윗꼬리 긴 봉';
+    else if(lowerWick/range>0.5) candleShape='아랫꼬리 긴 봉(망치형)';
+    else if(body/range<0.2) candleShape='도지(십자봉)';
+  }
+
+  // MA 이격 (현재가와 MA 간 거리 %)
+  const gapMa20=m20?((c.close-m20)/m20*100).toFixed(1):null;
+  const gapMa80=m80?((c.close-m80)/m80*100).toFixed(1):null;
+
+  // MA 밀집 여부 (5/20/80 간격이 좁으면 수렴 중)
+  let maConverging=false;
+  if(m5&&m20&&m80){
+    const spread=Math.abs(m5-m80)/m80*100;
+    maConverging=spread<3;
+  }
+
+  // 전고점 돌파 여부 (직전 20봉 고점 대비)
+  let prev20High=-Infinity;
+  for(let i=Math.max(0,idx-20);i<idx;i++) if(candles[i].high>prev20High) prev20High=candles[i].high;
+  const breakout = prev20High>0 && c.close > prev20High;
+
+  // 거래량 평균 대비 비율
+  let avgVol=0, volCount=0;
+  for(let i=Math.max(0,idx-20);i<idx;i++){avgVol+=candles[i].volume;volCount++;}
+  avgVol=volCount>0?avgVol/volCount:c.volume;
+  const volRatio=(c.volume/avgVol*100).toFixed(0);
+
   return{
-    price: c.close,
-    ma5:   ma(5,idx),
-    ma20:  ma(20,idx),
-    ma80:  ma(80,idx),
+    price:    c.close,
+    ma5:      m5, ma20: m20, ma80: m80,
+    gapMa20, gapMa80,
+    maConverging,
     volSignal: vSig(idx),
-    ddStep: ddS(idx),
-    ddRaw:  ddR(idx).toFixed(1),
-    volume: c.volume,
-    isUp:   c.close>=c.open,
+    volRatio,       // 20일 평균 대비 거래량 %
+    ddStep:   ddS(idx),
+    ddRaw:    ddR(idx).toFixed(1),
+    isUp:     c.close>=c.open,
+    candleShape,
+    upStreak, downStreak,
+    breakout,       // 전고점 돌파 여부
   };
 }
 
 function doBuy(){
   if(pos){log('이미 보유 중입니다.');return;}
   const last=candles[candles.length-1],idx=candles.length-1;
-  pos={p:last.close,i:idx,d:elapsed,snap:snapshot(idx)};
+  pos={p:last.close,i:idx,d:elapsed,snap:snapshot(idx),maxPct:0,minPct:0};
   trades.push({i:idx,buy:true});
   log('매수 @ '+fp(last.close)+' ('+elapsed+'일째)');refresh();
 }
@@ -408,6 +459,8 @@ function doSell(){
     holdDays:  h,
     netPct:    net,
     grossPct:  gross,
+    maxPct:    pos.maxPct,   // 보유 중 최고 수익률
+    minPct:    pos.minPct,   // 보유 중 최저 수익률
     win:       net>0,
     buySnap:   pos.snap,
     sellSnap:  snapshot(idx),
@@ -447,7 +500,7 @@ async function requestAIAnalysis(record){
   document.getElementById('aiPanel').style.display='block';
   document.getElementById('aiTradeBox').style.display='block';
   document.getElementById('aiStatus').textContent='분석 중...';
-  document.getElementById('aiTradeText').textContent='';
+  document.getElementById('aiTradeText').textContent='⏳ AI가 분석 중입니다...';
   document.getElementById('aiTradeScore').textContent='';
 
   const bs=record.buySnap, ss=record.sellSnap;
@@ -455,35 +508,59 @@ async function requestAIAnalysis(record){
   const wr=tot>0?(wins/tot*100).toFixed(1):'0';
   const avgH=tot>0?(holdSum/tot).toFixed(1):'0';
 
-  const prompt=`당신은 주식 매매 트레이닝 코치입니다. 아래는 학습자의 매매 데이터입니다. 한국어로 간결하게 분석해주세요.
+  // 매수/매도 이탈 여부 (손절 타이밍 놓쳤는지)
+  const lostMore = record.minPct < record.netPct - 1;
+  const missedMore = record.maxPct > record.netPct + 2;
 
-[이번 거래 #${record.no}]
-- 매수가: ${fp(record.buyPrice)}원 / 매도가: ${fp(record.sellPrice)}원
-- 수익률: ${record.netPct.toFixed(2)}% (수수료 차감) / 보유기간: ${record.holdDays}일
-- 결과: ${record.win?'✅ 수익':'❌ 손실'}
+  const prompt=`당신은 주식 단기 매매 트레이닝 코치입니다. 학습자의 매매를 아래 데이터를 토대로 냉철하게 분석해주세요. 마크다운 없이 일반 텍스트로, 한국어로 답변하세요.
 
-[매수 시점 지표]
-- MA 배열: ${maStatus(bs)}
-- MA5: ${bs?.ma5?Math.round(bs.ma5):'N/A'} / MA20: ${bs?.ma20?Math.round(bs.ma20):'N/A'} / MA80: ${bs?.ma80?Math.round(bs.ma80):'N/A'}
-- 60일 최고가 대비 하락률: ${bs?.ddRaw}% (단계: ${bs?.ddStep})
-- 거래량 급증 신호: ${bs?.volSignal?'있음':'없음'}
-- 당일 봉: ${bs?.isUp?'양봉':'음봉'}
+===== 거래 #${record.no} 기본 정보 =====
+매수가: ${fp(record.buyPrice)}원  |  매도가: ${fp(record.sellPrice)}원
+총 수익률: ${record.grossPct.toFixed(2)}%  |  수수료 차감 후: ${record.netPct.toFixed(2)}%
+보유기간: ${record.holdDays}일  |  결과: ${record.win?'수익':'손실'}
+보유 중 최고 수익률: +${record.maxPct.toFixed(2)}%  |  보유 중 최저 수익률: ${record.minPct.toFixed(2)}%
 
-[매도 시점 지표]
-- MA 배열: ${maStatus(ss)}
-- 60일 최고가 대비 하락률: ${ss?.ddRaw}% (단계: ${ss?.ddStep})
-- 거래량 급증 신호: ${ss?.volSignal?'있음':'없음'}
-- 당일 봉: ${ss?.isUp?'양봉':'음봉'}
+===== 매수 시점 분석 데이터 =====
+MA 배열: ${maStatus(bs)}
+MA5: ${bs?.ma5?Math.round(bs.ma5):'N/A'}  MA20: ${bs?.ma20?Math.round(bs.ma20):'N/A'}  MA80: ${bs?.ma80?Math.round(bs.ma80):'N/A'}
+현재가와 MA20 이격: ${bs?.gapMa20}%  |  MA80 이격: ${bs?.gapMa80}%
+MA 수렴 중: ${bs?.maConverging?'예(밀집)':'아니오'}
+봉 모양: ${bs?.candleShape}  |  당일: ${bs?.isUp?'양봉':'음봉'}
+직전 연속 양봉: ${bs?.upStreak}개  |  직전 연속 음봉: ${bs?.downStreak}개
+60일 최고가 대비 하락률: ${bs?.ddRaw}% (단계: ${bs?.ddStep})
+거래량 급증 신호(60일 최고 95%): ${bs?.volSignal?'있음':'없음'}
+거래량 20일 평균 대비: ${bs?.volRatio}%
+전고점(직전 20봉) 돌파: ${bs?.breakout?'돌파':'미돌파'}
 
-[현재까지 누적 통계]
-- 총 거래: ${tot}회 / 승률: ${wr}% / 평균 보유기간: ${avgH}일
-- 누적 손익: ${tPnl.toFixed(2)}%
+===== 매도 시점 분석 데이터 =====
+MA 배열: ${maStatus(ss)}
+MA5: ${ss?.ma5?Math.round(ss.ma5):'N/A'}  MA20: ${ss?.ma20?Math.round(ss.ma20):'N/A'}  MA80: ${ss?.ma80?Math.round(ss.ma80):'N/A'}
+봉 모양: ${ss?.candleShape}  |  당일: ${ss?.isUp?'양봉':'음봉'}
+60일 최고가 대비 하락률: ${ss?.ddRaw}% (단계: ${ss?.ddStep})
+거래량 급증 신호: ${ss?.volSignal?'있음':'없음'}
+거래량 20일 평균 대비: ${ss?.volRatio}%
+최고점 대비 일찍 매도 여부: ${missedMore?`예(최고 +${record.maxPct.toFixed(1)}%에서 +${record.netPct.toFixed(1)}%에 매도)`:'아니오'}
+최저점보다 늦게 매도 여부: ${lostMore?`예(최저 ${record.minPct.toFixed(1)}%까지 하락 경험)`:'아니오'}
 
-아래 형식으로 답변하세요:
-1. 매수 타이밍 평가 (1~2문장)
-2. 매도 타이밍 평가 (1~2문장)
-3. 이번 거래의 핵심 개선점 (1문장)
-4. 점수: X/10점 (이유 한 줄)`;
+===== 누적 성과 =====
+총 거래: ${tot}회  |  승률: ${wr}%  |  평균 보유기간: ${avgH}일
+누적 손익: ${tPnl.toFixed(2)}%
+
+===== 분석 요청 =====
+아래 4가지를 각각 번호와 제목 붙여서 서술하세요.
+
+1. 매수 타이밍 평가
+   - 어떤 상황에서 진입했는지, 좋은 점과 아쉬운 점을 구체적으로
+
+2. 매도 타이밍 평가
+   - 최고점 대비 언제 팔았는지, 너무 빠르거나 늦지는 않았는지
+
+3. 보유 기간 중 심리 분석
+   - 최고 +${record.maxPct.toFixed(1)}%에서 최종 ${record.netPct.toFixed(1)}%로 마감한 것의 의미
+
+4. 핵심 개선 포인트 (1~2가지만, 구체적으로)
+
+5. 이번 거래 점수: X/10점 (근거 한 줄)`;
 
   try{
     const text=await callAI(prompt);
@@ -500,43 +577,75 @@ async function requestAIAnalysis(record){
 async function requestPatternAnalysis(){
   if(tradeHistory.length<3)return;
   document.getElementById('aiPatternBox').style.display='block';
-  document.getElementById('aiPatternText').textContent='패턴 분석 중...';
+  document.getElementById('aiPatternText').textContent='⏳ 패턴 분석 중...';
 
   const tot=wins+losses;
   const wr=(wins/tot*100).toFixed(1);
   const avgH=(holdSum/tot).toFixed(1);
-  const avgWin=tradeHistory.filter(t=>t.win).reduce((s,t)=>s+t.netPct,0)/(wins||1);
-  const avgLoss=tradeHistory.filter(t=>!t.win).reduce((s,t)=>s+t.netPct,0)/(losses||1);
+  const winTrades=tradeHistory.filter(t=>t.win);
+  const lossTrades=tradeHistory.filter(t=>!t.win);
+  const avgWin=winTrades.reduce((s,t)=>s+t.netPct,0)/(wins||1);
+  const avgLoss=lossTrades.reduce((s,t)=>s+t.netPct,0)/(losses||1);
   const maxWin=Math.max(...tradeHistory.map(t=>t.netPct));
   const maxLoss=Math.min(...tradeHistory.map(t=>t.netPct));
+  const profitFactor=losses>0?Math.abs(avgWin/avgLoss):99;
 
-  // 매수 시점 MA 배열 통계
+  // 매수 습관 통계
   const buyInUptrend=tradeHistory.filter(t=>t.buySnap?.ma5>t.buySnap?.ma20&&t.buySnap?.ma20>t.buySnap?.ma80).length;
-  const buyWithVolSignal=tradeHistory.filter(t=>t.buySnap?.volSignal).length;
-  const buyInDeepDip=tradeHistory.filter(t=>t.buySnap?.ddStep<=-20).length;
+  const buyInDowntrend=tradeHistory.filter(t=>t.buySnap?.ma5<t.buySnap?.ma20&&t.buySnap?.ma20<t.buySnap?.ma80).length;
+  const buyWithVol=tradeHistory.filter(t=>t.buySnap?.volSignal).length;
+  const buyDeepDip=tradeHistory.filter(t=>t.buySnap?.ddStep<=-20).length;
+  const buyBreakout=tradeHistory.filter(t=>t.buySnap?.breakout).length;
 
-  const prompt=`당신은 주식 매매 트레이닝 코치입니다. 학습자의 ${tot}회 매매 패턴을 분석해주세요. 한국어로 답변하세요.
+  // 매도 습관 통계
+  const avgMaxPct=tradeHistory.reduce((s,t)=>s+t.maxPct,0)/tot;
+  const avgFinalVsMax=tradeHistory.reduce((s,t)=>s+(t.netPct-t.maxPct),0)/tot;
+  const earlyExits=tradeHistory.filter(t=>t.maxPct-t.netPct>3).length; // 최고점 대비 3%이상 손실 후 매도
+  const avgHoldWin=winTrades.length>0?winTrades.reduce((s,t)=>s+t.holdDays,0)/winTrades.length:0;
+  const avgHoldLoss=lossTrades.length>0?lossTrades.reduce((s,t)=>s+t.holdDays,0)/lossTrades.length:0;
 
-[누적 통계]
-- 승률: ${wr}% (${wins}승 ${losses}패)
-- 평균 수익: +${avgWin.toFixed(2)}% / 평균 손실: ${avgLoss.toFixed(2)}%
-- 최대 수익: +${maxWin.toFixed(2)}% / 최대 손실: ${maxLoss.toFixed(2)}%
-- 평균 보유기간: ${avgH}일
-- 누적 손익: ${tPnl.toFixed(2)}%
+  const prompt=`당신은 주식 단기 매매 트레이닝 코치입니다. 학습자의 ${tot}회 매매 전체 패턴을 분석해주세요. 마크다운 없이 일반 텍스트로, 한국어로 답변하세요.
 
-[매수 습관 분석]
-- 정배열에서 매수: ${buyInUptrend}/${tot}회
-- 거래량 급증 신호 시 매수: ${buyWithVolSignal}/${tot}회
-- 60일 고점 대비 -20% 이상 하락 시 매수: ${buyInDeepDip}/${tot}회
+===== 전체 성과 =====
+승률: ${wr}% (${wins}승 ${losses}패)
+평균 수익: +${avgWin.toFixed(2)}%  |  평균 손실: ${avgLoss.toFixed(2)}%
+최대 수익: +${maxWin.toFixed(2)}%  |  최대 손실: ${maxLoss.toFixed(2)}%
+손익비(Profit Factor): ${profitFactor.toFixed(2)}
+평균 보유기간: ${avgH}일 (수익 거래: ${avgHoldWin.toFixed(1)}일 / 손실 거래: ${avgHoldLoss.toFixed(1)}일)
+누적 손익: ${tPnl.toFixed(2)}%
 
-[거래 상세]
-${tradeHistory.slice(-5).map(t=>`  #${t.no}: ${t.win?'✅':'❌'} ${t.netPct.toFixed(1)}% (${t.holdDays}일)`).join('\n')}
+===== 매수 습관 통계 =====
+정배열에서 매수: ${buyInUptrend}/${tot}회
+역배열에서 매수: ${buyInDowntrend}/${tot}회
+거래량 급증 시 매수: ${buyWithVol}/${tot}회
+60일 고점 -20% 이상 하락 구간 매수: ${buyDeepDip}/${tot}회
+전고점 돌파 시 매수: ${buyBreakout}/${tot}회
 
-아래 형식으로 분석하세요:
-1. 매매 습관의 강점 (1~2문장)
-2. 반복되는 실수 패턴 (1~2문장)
-3. 지금 당장 개선해야 할 핵심 1가지 (구체적으로)
-4. 종합 평가 (2~3문장)`;
+===== 매도 습관 통계 =====
+평균 최고 수익률: +${avgMaxPct.toFixed(2)}%
+평균 실현 수익률(수수료 전): ${(tradeHistory.reduce((s,t)=>s+t.grossPct,0)/tot).toFixed(2)}%
+최고점 대비 평균 손실분: ${avgFinalVsMax.toFixed(2)}%
+최고점 대비 3% 이상 하락 후 매도한 거래: ${earlyExits}/${tot}회
+
+===== 최근 5거래 =====
+${tradeHistory.slice(-5).map(t=>`  #${t.no}: ${t.win?'수익':'손실'} ${t.netPct.toFixed(1)}% | 보유${t.holdDays}일 | 최고+${t.maxPct.toFixed(1)}% | 매수(${maStatus(t.buySnap)})`).join('\n')}
+
+===== 분석 요청 =====
+아래 5가지를 각각 번호와 제목 붙여서 서술하세요.
+
+1. 매수 습관 분석
+   - 어떤 상황에서 주로 진입하는지, 그 선택의 적절성
+
+2. 매도 습관 분석
+   - 수익을 극대화하는지, 손실을 키우는지
+
+3. 손익비 분석
+   - 수익거래와 손실거래의 크기 비교, 개선 방향
+
+4. 반복되는 실수 패턴 (가장 중요)
+   - 데이터에서 보이는 나쁜 습관 구체적으로
+
+5. 지금 당장 실천해야 할 개선책 (2~3가지)`;
 
   try{
     const text=await callAI(prompt);
@@ -549,6 +658,12 @@ ${tradeHistory.slice(-5).map(t=>`  #${t.no}: ${t.win?'✅':'❌'} ${t.netPct.toF
 // ── tick ─────────────────────────────────────────────────────
 function tick(){
   candles.push(genC(candles[candles.length-1]));elapsed++;
+  // 보유 중이면 최고/최저 수익률 갱신
+  if(pos){
+    const cur=(candles[candles.length-1].close-pos.p)/pos.p*100;
+    if(cur>pos.maxPct) pos.maxPct=cur;
+    if(cur<pos.minPct) pos.minPct=cur;
+  }
   if(candles.length>600){
     candles.shift();trades.forEach(t=>{t.i--;});if(pos)pos.i--;
     trades=trades.filter(t=>t.i>=0);
@@ -629,7 +744,14 @@ function setMode(m){
   document.getElementById('btnReal').className=ir?'mreal':'minact';
   document.getElementById('stockRow').className=ir?'show':'';
   if(!ir){setBanner('📊 랜덤 생성 모드 — 시장 국면 시뮬레이터','brand');curStock=null;initRand();}
-  else loadStockList();
+  else if(!stockList.length) {
+    await loadStockList();
+    if(stockList.length){
+      const s=stockList[Math.floor(Math.random()*stockList.length)];
+      document.getElementById('stockSel').value=s.code;
+      loadReal(s.code);
+    }
+  }
 }
 function setBanner(t,c){const el=document.getElementById('banner');el.textContent=t;el.className='banner '+c;}
 function showOv(m,p){document.getElementById('ovmsg').textContent=m;document.getElementById('ovprog').textContent=p||'';document.getElementById('overlay').className='show';}
