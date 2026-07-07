@@ -240,7 +240,7 @@ function ddS(idx){
 function snapshot(idx){
   if(idx<0||idx>=candles.length)return null;
   const c=candles[idx];
-  const m5=ma(5,idx),m20=ma(20,idx),m80=ma(80,idx);
+  const m5=ma(5,idx),m20=ma(10,idx),m80=ma(40,idx);
 
   let upStreak=0,downStreak=0;
   for(let i=idx-1;i>=Math.max(0,idx-5);i--){
@@ -361,9 +361,9 @@ const VC=mkChart('cVol','bar',{beginAtZero:true,ticks:{font:{size:10},padding:6,
 const DC=mkChart('cDd','line',{min:-55,max:0,ticks:{stepSize:10,font:{size:10}}});
 
 PC.data.datasets=[
-  {label:'MA5',data:[],borderColor:'#0F6E56',borderWidth:1,pointRadius:0,tension:.1,spanGaps:true},
-  {label:'MA20',data:[],borderColor:'#BA7517',borderWidth:1,pointRadius:0,tension:.1,spanGaps:true},
-  {label:'MA80',data:[],borderColor:'#7F77DD',borderWidth:1,pointRadius:0,tension:.1,spanGaps:true},
+  {label:'MA5',data:[],borderColor:'#E24B4A',borderWidth:1,pointRadius:0,tension:.1,spanGaps:true},
+  {label:'MA10',data:[],borderColor:'#CC7700',borderWidth:1,pointRadius:0,tension:.1,spanGaps:true},
+  {label:'MA40',data:[],borderColor:'#0F6E56',borderWidth:1,pointRadius:0,tension:.1,spanGaps:true},
 ];
 VC.data.datasets=[{label:'V',data:[],backgroundColor:[]}];
 DC.data.datasets=[{label:'DD',data:[],borderColor:'#D85A30',backgroundColor:'rgba(216,90,48,.15)',fill:true,stepped:true,pointRadius:0,borderWidth:1.5}];
@@ -404,8 +404,8 @@ function refresh(){
   const s=vs(),lbls=mkLbl();
   PC.data.labels=lbls;
   PC.data.datasets[0].data=vdata(i=>ma(5,i));
-  PC.data.datasets[1].data=vdata(i=>ma(20,i));
-  PC.data.datasets[2].data=vdata(i=>ma(80,i));
+  PC.data.datasets[1].data=vdata(i=>ma(10,i));
+  PC.data.datasets[2].data=vdata(i=>ma(40,i));
   PC.options.plugins.ann.list=buildPA();
   let mn=Infinity,mx=-Infinity;
   for(let i=s;i<candles.length;i++){
@@ -502,7 +502,14 @@ function doSell(){
 
 // ── tick ─────────────────────────────────────────────────────
 function tick(){
-  candles.push(genC(candles[candles.length-1]));
+  // 실제 종목 모드: 저장된 실제 데이터에서 다음 봉 순서대로 추가
+  if(MODE==='real' && window._realAllCandles && window._realNextIdx < window._realAllCandles.length){
+    candles.push(window._realAllCandles[window._realNextIdx]);
+    window._realNextIdx++;
+  } else {
+    // 랜덤 생성 모드 or 실제 데이터 소진 후 GARCH 연장
+    candles.push(genC(candles[candles.length-1]));
+  }
   elapsed++;
   if(pos){
     const cur=(candles[candles.length-1].close-pos.p)/pos.p*100;
@@ -524,6 +531,8 @@ function stopT(){if(timer){clearInterval(timer);timer=null;}}
 function resetStats(){
   pos=null;tPnl=0;trades=[];wins=0;losses=0;holdSum=0;
   tradeHistory=[];aiCount=0;
+  window._realAllCandles=null;
+  window._realNextIdx=0;
   document.getElementById('tlog').innerHTML='';
   document.getElementById('aiPanel').style.display='none';
   document.getElementById('aiTradeBox').style.display='none';
@@ -575,12 +584,30 @@ async function loadReal(code){
     const js=await res.json();
     if(js.error)throw new Error(js.error);
     if(!js.candles||js.candles.length<10)throw new Error('데이터 부족');
-    candles=js.candles.map(d=>({open:d.open,high:d.high,low:d.low,close:d.close,volume:d.volume}));
-    curStock={name:js.name||code,code:js.code,count:js.count,from:js.from,to:js.to};
+
+    const allCandles=js.candles.map(d=>({open:d.open,high:d.high,low:d.low,close:d.close,volume:d.volume}));
+    const total=allCandles.length;
+
+    // 랜덤 시작 위치: MA80 계산이 가능한 최소 80봉 이후부터
+    // 전체의 10% ~ 80% 사이에서 랜덤 시작 (너무 끝에서 시작하면 연습 구간이 짧아짐)
+    const minStart = Math.max(80, Math.floor(total * 0.1));
+    const maxStart = Math.floor(total * 0.8);
+    const startIdx = Math.floor(Math.random() * (maxStart - minStart + 1)) + minStart;
+
+    // 시작 위치까지의 데이터만 로드 (이후는 시작 버튼으로 1봉씩 추가)
+    candles = allCandles.slice(0, startIdx);
+    // 전체 데이터 저장 (시작 이후 봉 추가용)
+    window._realAllCandles = allCandles;
+    window._realNextIdx = startIdx;
+
+    curStock={name:js.name||code,code:js.code,count:js.count,from:js.from,to:js.to,totalCandles:total};
     elapsed=candles.length;
     reg='SIDEWAYS';rrem=25;sig2=1e-4;pe=0;
     resetStats();refresh();
-    setBanner('📈 실제 종목: '+curStock.name+' ('+code+') | '+js.count+'일 | '+js.from+'~'+js.to,'breal');
+
+    const startDate=allCandles[startIdx-1]?.date||'';
+    const pct=((startIdx/total)*100).toFixed(0);
+    setBanner('📈 '+curStock.name+' ('+code+') | 전체 '+total+'일 중 '+pct+'% 지점('+startDate+')에서 시작','breal');
     hideOv();
   }catch(e){
     hideOv();alert('불러오기 실패: '+e.message);
@@ -622,8 +649,8 @@ async function requestAIAnalysis(record){
 
 ===== 매수 시점 =====
 MA 배열: ${maStatus(bs)}
-MA5: ${bs&&bs.ma5?Math.round(bs.ma5):'N/A'}  MA20: ${bs&&bs.ma20?Math.round(bs.ma20):'N/A'}  MA80: ${bs&&bs.ma80?Math.round(bs.ma80):'N/A'}
-MA20 이격: ${bs&&bs.gapMa20?bs.gapMa20:'N/A'}%  |  MA80 이격: ${bs&&bs.gapMa80?bs.gapMa80:'N/A'}%
+MA5: ${bs&&bs.ma5?Math.round(bs.ma5):'N/A'}  MA10: ${bs&&bs.ma20?Math.round(bs.ma20):'N/A'}  MA40: ${bs&&bs.ma80?Math.round(bs.ma80):'N/A'}
+MA10 이격: ${bs&&bs.gapMa20?bs.gapMa20:'N/A'}%  |  MA40 이격: ${bs&&bs.gapMa80?bs.gapMa80:'N/A'}%
 MA 수렴 중: ${bs&&bs.maConverging?'예':'아니오'}
 봉 모양: ${bs&&bs.candleShape?bs.candleShape:'N/A'}  |  ${bs&&bs.isUp?'양봉':'음봉'}
 연속 양봉: ${bs?bs.upStreak:0}개  |  연속 음봉: ${bs?bs.downStreak:0}개
