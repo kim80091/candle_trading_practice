@@ -111,16 +111,20 @@ button:active{opacity:.8;}
   <button class="r" id="btnSellM">매도</button>
 </div>
 <div class="cbox">
-  <div class="ddrow"><span>거래량</span><span class="ddval" id="vVol" style="color:#555;"></span></div>
-  <div class="cwrap vc"><canvas id="cVol"></canvas></div>
-</div>
-<div class="cbox">
   <div class="ddrow"><span>MA40 추세 방향</span><span class="ddval" id="vMaTrend" style="color:#378ADD;">-</span></div>
   <div class="cwrap" style="height:55px;"><canvas id="cMaTrend"></canvas></div>
 </div>
 <div class="cbox">
+  <div class="ddrow"><span>MA40 골드,데드 크로스</span><span class="ddval" id="vMaCross" style="color:#555;">-</span></div>
+  <div class="cwrap" style="height:55px;"><canvas id="cMaCross"></canvas></div>
+</div>
+<div class="cbox">
   <div class="ddrow"><span>60일 최고가 대비 하락률</span><span class="ddval" id="vDd">0%</span></div>
   <div class="cwrap dc"><canvas id="cDd"></canvas></div>
+</div>
+<div class="cbox">
+  <div class="ddrow"><span>거래량</span><span class="ddval" id="vVol" style="color:#555;"></span></div>
+  <div class="cwrap vc"><canvas id="cVol"></canvas></div>
 </div>
 <div class="logtitle">거래 내역</div>
 <div id="tlog"></div>
@@ -250,6 +254,21 @@ function ma40Dir(idx){
   if(cur===null||prev===null)return 0;
   if(cur>prev)return 1;
   if(cur<prev)return -1;
+  return 0;
+}
+
+// MA40 크로스 신호
+// CrossUp(C,M): 직전 종가 < MA40 이고 현재 종가 >= MA40 → 골든크로스 1 (주황)
+// CrossDown(C,M): 직전 종가 > MA40 이고 현재 종가 <= MA40 → 데드크로스 -1 (에메랄드)
+function ma40Cross(idx){
+  if(idx<41)return 0;
+  const curC=candles[idx].close;
+  const prevC=candles[idx-1].close;
+  const curM=ma(40,idx);
+  const prevM=ma(40,idx-1);
+  if(!curM||!prevM)return 0;
+  if(prevC<prevM&&curC>=curM)return 1;   // CrossUp → 골든크로스
+  if(prevC>prevM&&curC<=curM)return -1;  // CrossDown → 데드크로스
   return 0;
 }
 
@@ -393,6 +412,24 @@ const MT=new Chart(document.getElementById('cMaTrend'),{
     plugins:{legend:{display:false},tooltip:{enabled:false}}
   },plugins:[]
 });
+
+// MA40 골든/데드크로스 차트 (주황: 골든, 에메랄드: 데드)
+const MC=new Chart(document.getElementById('cMaCross'),{
+  type:'bar',
+  data:{labels:[],datasets:[{label:'MA40크로스',data:[],backgroundColor:[]}]},
+  options:{
+    responsive:true,maintainAspectRatio:false,animation:false,
+    layout:{padding:{left:4,right:4}},
+    scales:{
+      x:{ticks:{display:false},grid:{display:false},min:0,max:VIS+VP-1},
+      y:{position:'right',min:-1.5,max:1.5,
+        ticks:{font:{size:10},padding:6,callback:v=>v===1?'골든':v===-1?'데드':'',stepSize:1},
+        afterFit:s=>{s.width=64;},
+        grid:{color:'rgba(128,128,128,.1)'}}
+    },
+    plugins:{legend:{display:false},tooltip:{enabled:false}}
+  },plugins:[]
+});
 const DC=mkChart('cDd','line',{min:-55,max:0,ticks:{stepSize:10,font:{size:10}}});
 
 PC.data.datasets=[
@@ -471,7 +508,22 @@ function refresh(){
   else if(lastDir===-1){trendEl.textContent='▼ 하락';trendEl.style.color='#378ADD';}
   else{trendEl.textContent='— 횡보';trendEl.style.color='#888';}
 
-  PC.update('none');VC.update('none');DC.update('none');MT.update('none');
+  // MA40 골든/데드크로스 차트
+  MC.data.labels=lbls;
+  const mcData=vdata(i=>ma40Cross(i));
+  MC.data.datasets[0].data=mcData;
+  MC.data.datasets[0].backgroundColor=mcData.map(v=>
+    v===1?'rgba(245,166,35,0.9)':v===-1?'rgba(46,205,167,0.9)':'rgba(0,0,0,0)'
+  );
+
+  // MA40 크로스 현재값 레이블
+  const lastCross=ma40Cross(candles.length-1);
+  const crossEl=document.getElementById('vMaCross');
+  if(lastCross===1){crossEl.textContent='▲ 골든크로스';crossEl.style.color='#F5A623';}
+  else if(lastCross===-1){crossEl.textContent='▼ 데드크로스';crossEl.style.color='#2ECDA7';}
+  else{crossEl.textContent='-';crossEl.style.color='#555';}
+
+  PC.update('none');VC.update('none');DC.update('none');MT.update('none');MC.update('none');
   updateUI();
 }
 
