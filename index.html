@@ -100,7 +100,7 @@ button:active{opacity:.8;}
   <div class="card"><div class="lbl">현재 손익(수수료 차감)</div><div class="val" id="vPnl">-</div></div>
   <div class="card"><div class="lbl">누적 손익</div><div class="val" id="vTotal">0%</div></div>
   <div class="card"><div class="lbl">평가자산</div><div class="val" id="vAsset">100,000,000원</div></div>
-  <div class="card"><div class="lbl">연간 평균 수익률</div><div class="val" id="vAnnual">-</div></div>
+  <div class="card"><div class="lbl">누적 손익%</div><div class="val" id="vAnnual">-</div></div>
   <div class="card"><div class="lbl">매매 승률 (횟수)</div><div class="val" id="vWin">-</div></div>
   <div class="card"><div class="lbl">평균 보유기간</div><div class="val" id="vAvgHold">-</div></div>
 </div>
@@ -538,7 +538,7 @@ function updateUI(){
     document.getElementById('vEntry').textContent=fp(pos.p);
     const net=(last.close-pos.p)/pos.p*100-FEE*100;
     const el=document.getElementById('vPnl');
-    el.textContent=net.toFixed(2)+'%';el.style.color=net>=0?bC:sC;
+    el.textContent=net.toFixed(1)+'%';el.style.color=net>=0?bC:sC;
     document.getElementById('vHold').textContent=(elapsed-pos.d)+'일째';
   }else{
     document.getElementById('vEntry').textContent='-';
@@ -546,15 +546,15 @@ function updateUI(){
     document.getElementById('vHold').textContent='-';
   }
   const tel=document.getElementById('vTotal');
-  tel.textContent=tPnl.toFixed(2)+'%';tel.style.color=tPnl>0?bC:(tPnl<0?sC:'#1a1a1a');
+  tel.textContent=tPnl.toFixed(1)+'%';tel.style.color=tPnl>0?bC:(tPnl<0?sC:'#1a1a1a');
   let asset=capital*(1+tPnl/100);
   if(pos){const net=(last.close-pos.p)/pos.p*100-FEE*100;asset*=(1+net/100);}
   const ael=document.getElementById('vAsset');
   ael.textContent=fp(Math.round(asset))+'원';ael.style.color=asset>=capital?bC:sC;
   const anel=document.getElementById('vAnnual');
-  if(elapsed>0&&asset>0){
-    const cg=(Math.pow(asset/capital,252/elapsed)-1)*100;
-    anel.textContent=cg.toFixed(2)+'%';anel.style.color=cg>0?bC:(cg<0?sC:'#1a1a1a');
+  if(tPnl!==0||wins+losses>0){
+    anel.textContent=tPnl.toFixed(1)+'%';
+    anel.style.color=tPnl>0?bC:(tPnl<0?sC:'#1a1a1a');
   }else{anel.textContent='-';anel.style.color='#1a1a1a';}
   const tot=wins+losses;
   const wrel=document.getElementById('vWin');
@@ -563,7 +563,7 @@ function updateUI(){
   document.getElementById('vAvgHold').textContent=tot>0?(holdSum/tot).toFixed(1)+'일':'-';
   const dr=ddR(candles.length-1);
   const ddel=document.getElementById('vDd');
-  ddel.textContent=dr.toFixed(2)+'%';ddel.style.color=dr<=-5?'#D85A30':'#888';
+  ddel.textContent=dr.toFixed(1)+'%';ddel.style.color=dr<=-5?'#D85A30':'#888';
 
   // 현재 거래량 표시
   const volEl=document.getElementById('vVol');
@@ -592,7 +592,7 @@ function doSell(){
   tPnl+=net;net>0?wins++:losses++;
   const h=elapsed-pos.d;holdSum+=h;
   trades.push({i:idx,buy:false});
-  log('매도 @ '+fp(last.close)+' | 보유 '+h+'일 | '+net.toFixed(2)+'%');
+  log('매도 @ '+fp(last.close)+' | 보유 '+h+'일 | '+net.toFixed(1)+'%');
   const record={
     no:tradeHistory.length+1,
     buyPrice:pos.p,sellPrice:last.close,
