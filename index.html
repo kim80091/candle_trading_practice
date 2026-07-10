@@ -708,7 +708,7 @@ async function loadReal(code){
     window._realNextIdx = startIdx;
 
     curStock={name:js.name||code,code:js.code,count:js.count,from:js.from,to:js.to,totalCandles:total};
-    elapsed=candles.length;
+    elapsed=0;  // 연습 시작 시점부터 0으로 카운팅
     reg='SIDEWAYS';rrem=25;sig2=1e-4;pe=0;
     resetStats();refresh();
 
