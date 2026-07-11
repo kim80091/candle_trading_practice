@@ -334,15 +334,15 @@ const MC=new Chart(document.getElementById('cMaCross'),{
   options:{responsive:true,maintainAspectRatio:false,animation:false,layout:{padding:{left:4,right:4}},
     scales:{x:{ticks:{display:false},grid:{display:false},min:0,max:VIS+VP-1},
       y:{position:'right',min:-1.5,max:1.5,ticks:{font:{size:10},padding:6,callback:v=>v===1?'골든':v===-1?'데드':'',stepSize:1},afterFit:s=>{s.width=64;},grid:{color:'rgba(128,128,128,.1)'}}},
-    plugins:{legend:{display:false},tooltip:{enabled:false}}},plugins:[]
+    plugins:{legend:{display:false},tooltip:{enabled:false},ann:{list:[]}}},plugins:[]
 });
 
 // OBV 차트
 const OC=new Chart(document.getElementById('cObv'),{
   type:'line',
   data:{labels:[],datasets:[
-    {label:'OBV',data:[],borderColor:'#378ADD',borderWidth:1.5,pointRadius:0,tension:.1,spanGaps:true},
-    {label:'Signal',data:[],borderColor:'#E24B4A',borderWidth:1,pointRadius:0,tension:.1,spanGaps:true,borderDash:[3,2]},
+    {label:'OBV',data:[],borderColor:'#CC7700',borderWidth:1.5,pointRadius:0,tension:.1,spanGaps:true},
+    {label:'Signal',data:[],borderColor:'#1a1a1a',borderWidth:1,pointRadius:0,tension:.1,spanGaps:true,borderDash:[3,2]},
   ]},
   options:{responsive:true,maintainAspectRatio:false,animation:false,layout:{padding:{left:4,right:4}},
     interaction:{intersect:false},
@@ -427,6 +427,13 @@ function refresh(){
   const mcData=vdata(i=>ma40Cross(i));
   MC.data.datasets[0].data=mcData;
   MC.data.datasets[0].backgroundColor=mcData.map(v=>v===1?'rgba(245,166,35,0.9)':v===-1?'rgba(46,205,167,0.9)':'rgba(0,0,0,0)');
+  // 크로스 화살표 annotation (막대 위에 작은 화살표)
+  const mcAnns=[];
+  mcData.forEach((v,li)=>{
+    if(v===1) mcAnns.push({t:'arrow',xi:li,yi:1.1,cl:'#F5A623',up:true,sz:0.35});
+    else if(v===-1) mcAnns.push({t:'arrow',xi:li,yi:-1.1,cl:'#2ECDA7',up:false,sz:0.35});
+  });
+  MC.options.plugins.ann.list=mcAnns;
   const lastCross=ma40Cross(candles.length-1);
   const crossEl=document.getElementById('vMaCross');
   if(lastCross===1){crossEl.textContent='▲ 골든크로스';crossEl.style.color='#F5A623';}
