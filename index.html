@@ -473,10 +473,10 @@ function refresh(){
     if(o==null||po==null||sg==null||psg==null)continue;
     if(po<=psg&&o>sg){
       // 골든크로스 (OBV가 시그널 위로) → 위 화살표
-      obvAnns.push({t:'arrow',xi:vi,yi:Math.max(o,sg),cl:'#E24B4A',up:true,sz:0.35});
+      obvAnns.push({t:'arrow',xi:vi,yi:Math.max(o,sg),cl:'#E24B4A',up:true,sz:0.7});
     }else if(po>=psg&&o<sg){
       // 데드크로스 (OBV가 시그널 아래로) → 아래 화살표
-      obvAnns.push({t:'arrow',xi:vi,yi:Math.min(o,sg),cl:'#378ADD',up:false,sz:0.35});
+      obvAnns.push({t:'arrow',xi:vi,yi:Math.min(o,sg),cl:'#378ADD',up:false,sz:0.7});
     }
   }
   OC.options.plugins.ann.list=obvAnns;
