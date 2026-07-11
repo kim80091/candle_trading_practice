@@ -85,8 +85,6 @@ button:active{opacity:.8;}
   <button id="btnPause">⏸ 일시정지</button>
   <button id="btnReset">↺ 리셋</button>
 </div>
-<div style="font-size:13px;font-weight:600;margin-bottom:8px;" id="dayLabel">경과: 0일째 (0개월)</div>
-
 <!-- 통계 카드 -->
 <div class="stats">
   <div class="card"><div class="lbl">평가자산</div><div class="val" id="vAsset">100,000,000원</div></div>
@@ -99,11 +97,14 @@ button:active{opacity:.8;}
   <div class="card"><div class="lbl">현재 손익(수수료 차감)</div><div class="val" id="vPnl">-</div></div>
 </div>
 
-<!-- 볼린저밴드 옵션 -->
-<label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12px;color:#9C6EDE;font-weight:600;margin-bottom:4px;">
-  <input type="checkbox" id="chkBB" style="width:14px;height:14px;accent-color:#9C6EDE;cursor:pointer;">
-  볼린저밴드(20,2)
-</label>
+<!-- 볼린저밴드 옵션 + 경과 -->
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+  <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12px;color:#9C6EDE;font-weight:600;">
+    <input type="checkbox" id="chkBB" style="width:14px;height:14px;accent-color:#9C6EDE;cursor:pointer;">
+    볼린저밴드(20,2)
+  </label>
+  <span style="font-size:13px;font-weight:600;" id="dayLabel">경과: 0일째 (0개월)</span>
+</div>
 
 <!-- 캔들 차트 -->
 <div class="cbox"><div class="cwrap pc"><canvas id="cPrice"></canvas></div></div>
