@@ -77,7 +77,6 @@ button:active{opacity:.8;}
   <button id="s1" class="b">1초</button>
   <button id="s2">2초</button>
   <button id="s3">3초</button>
-  <button id="btnBB" style="margin-left:auto;font-size:11px;padding:5px 9px;border-color:#9C6EDE;color:#9C6EDE;">볼린저밴드 OFF</button>
 </div>
 
 <!-- 시작/일시정지/리셋 -->
@@ -99,6 +98,12 @@ button:active{opacity:.8;}
   <div class="card"><div class="lbl">누적 손익%</div><div class="val" id="vAnnual">-</div></div>
   <div class="card"><div class="lbl">현재 손익(수수료 차감)</div><div class="val" id="vPnl">-</div></div>
 </div>
+
+<!-- 볼린저밴드 옵션 -->
+<label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12px;color:#9C6EDE;font-weight:600;margin-bottom:4px;">
+  <input type="checkbox" id="chkBB" style="width:14px;height:14px;accent-color:#9C6EDE;cursor:pointer;">
+  볼린저밴드(20,2)
+</label>
 
 <!-- 캔들 차트 -->
 <div class="cbox"><div class="cwrap pc"><canvas id="cPrice"></canvas></div></div>
@@ -152,7 +157,7 @@ let wins=0, losses=0, holdSum=0;
 let tradeHistory=[], aiCount=0;
 let halfSlots=[];
 let stockShuffled=[], stockShuffleIdx=0;
-let showBB=false; // 볼린저밴드 표시 여부
+let showBB=localStorage.getItem('showBB')==='true'; // 볼린저밴드 표시 여부 (localStorage 유지)
 
 // ── 볼린저밴드 계산 ──────────────────────────────────────────
 function bbUpper(idx){
@@ -309,7 +314,6 @@ const MC=new Chart(document.getElementById('cMaCross'),{
 });
 
 PC.data.datasets=[
-  {label:'MA5',data:[],borderColor:'#E24B4A',borderWidth:1,pointRadius:0,tension:.1,spanGaps:true},
   {label:'MA10',data:[],borderColor:'#CC7700',borderWidth:1,pointRadius:0,tension:.1,spanGaps:true},
   {label:'MA40',data:[],borderColor:'#0F6E56',borderWidth:1,pointRadius:0,tension:.1,spanGaps:true},
   {label:'BB상단',data:[],borderColor:'rgba(156,110,222,0.7)',borderWidth:1,borderDash:[4,3],pointRadius:0,tension:.1,spanGaps:true,fill:false},
@@ -346,11 +350,10 @@ function refresh(){
   if(!candles.length)return;
   const s=vs(),lbls=mkLbl();
   PC.data.labels=lbls;
-  PC.data.datasets[0].data=vdata(i=>ma(5,i));
-  PC.data.datasets[1].data=vdata(i=>ma(10,i));
-  PC.data.datasets[2].data=vdata(i=>ma(40,i));
-  PC.data.datasets[3].data=showBB?vdata(i=>bbUpper(i)):vdata(()=>null);
-  PC.data.datasets[4].data=showBB?vdata(i=>bbLower(i)):vdata(()=>null);
+  PC.data.datasets[0].data=vdata(i=>ma(10,i));
+  PC.data.datasets[1].data=vdata(i=>ma(40,i));
+  PC.data.datasets[2].data=showBB?vdata(i=>bbUpper(i)):vdata(()=>null);
+  PC.data.datasets[3].data=showBB?vdata(i=>bbLower(i)):vdata(()=>null);
   PC.options.plugins.ann.list=buildPA();
   let mn=Infinity,mx=-Infinity;
   for(let i=s;i<candles.length;i++){if(candles[i].low<mn)mn=candles[i].low;if(candles[i].high>mx)mx=candles[i].high;}
@@ -654,12 +657,13 @@ function getNextRandStock(){
 
 // ── 이벤트 ───────────────────────────────────────────────────
 document.getElementById('btnLoad').onclick=()=>{const v=document.getElementById('stockSel').value;if(v)loadReal(v);};
-document.getElementById('btnBB').onclick=()=>{
-  showBB=!showBB;
-  const btn=document.getElementById('btnBB');
-  btn.textContent='볼린저밴드 '+(showBB?'ON':'OFF');
-  btn.style.background=showBB?'rgba(156,110,222,0.1)':'#fafafa';
-  btn.style.fontWeight=showBB?'700':'400';
+
+// 볼린저밴드 체크박스 초기값 반영
+const chkBB=document.getElementById('chkBB');
+chkBB.checked=showBB;
+chkBB.onchange=()=>{
+  showBB=chkBB.checked;
+  localStorage.setItem('showBB', showBB);
   refresh();
 };
 document.getElementById('btnRandStock').onclick=()=>{
