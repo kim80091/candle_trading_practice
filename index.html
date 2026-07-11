@@ -356,7 +356,7 @@ const OC=new Chart(document.getElementById('cObv'),{
         return v;
       }},afterFit:s=>{s.width=64;},grid:{color:'rgba(128,128,128,.1)'}}
     },
-    plugins:{legend:{display:false},tooltip:{enabled:false}}
+    plugins:{legend:{display:false},tooltip:{enabled:false},ann:{list:[]}}
   },plugins:[]
 });
 
@@ -470,6 +470,22 @@ function refresh(){
   for(let i=0;i<VP;i++)sigView.push(null);
   OC.data.datasets[0].data=obvView;
   OC.data.datasets[1].data=sigView;
+
+  // OBV 크로스 화살표 (OBV가 시그널을 위로 돌파 or 아래 이탈)
+  const obvAnns=[];
+  for(let vi=1;vi<obvView.length;vi++){
+    const o=obvView[vi],po=obvView[vi-1];
+    const sg=sigView[vi],psg=sigView[vi-1];
+    if(o==null||po==null||sg==null||psg==null)continue;
+    if(po<=psg&&o>sg){
+      // 골든크로스 (OBV가 시그널 위로) → 위 화살표
+      obvAnns.push({t:'arrow',xi:vi,yi:Math.max(o,sg),cl:'#E24B4A',up:true,sz:0.35});
+    }else if(po>=psg&&o<sg){
+      // 데드크로스 (OBV가 시그널 아래로) → 아래 화살표
+      obvAnns.push({t:'arrow',xi:vi,yi:Math.min(o,sg),cl:'#378ADD',up:false,sz:0.35});
+    }
+  }
+  OC.options.plugins.ann.list=obvAnns;
   // 현재 OBV 값 표시
   const obvNow=obvArr[candles.length-1]||0;
   const obvEl=document.getElementById('vObv');
