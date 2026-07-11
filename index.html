@@ -77,6 +77,7 @@ button:active{opacity:.8;}
   <button id="s1" class="b">1초</button>
   <button id="s2">2초</button>
   <button id="s3">3초</button>
+  <button id="btnBB" style="margin-left:auto;font-size:11px;padding:5px 9px;border-color:#9C6EDE;color:#9C6EDE;">볼린저밴드 OFF</button>
 </div>
 
 <!-- 시작/일시정지/리셋 -->
@@ -151,6 +152,25 @@ let wins=0, losses=0, holdSum=0;
 let tradeHistory=[], aiCount=0;
 let halfSlots=[];
 let stockShuffled=[], stockShuffleIdx=0;
+let showBB=false; // 볼린저밴드 표시 여부
+
+// ── 볼린저밴드 계산 ──────────────────────────────────────────
+function bbUpper(idx){
+  if(idx+1<20)return null;
+  let sum=0;for(let i=idx-19;i<=idx;i++)sum+=candles[i].close;
+  const mean=sum/20;
+  let variance=0;for(let i=idx-19;i<=idx;i++)variance+=(candles[i].close-mean)**2;
+  const std=Math.sqrt(variance/20);
+  return mean+2*std;
+}
+function bbLower(idx){
+  if(idx+1<20)return null;
+  let sum=0;for(let i=idx-19;i<=idx;i++)sum+=candles[i].close;
+  const mean=sum/20;
+  let variance=0;for(let i=idx-19;i<=idx;i++)variance+=(candles[i].close-mean)**2;
+  const std=Math.sqrt(variance/20);
+  return mean-2*std;
+}
 
 // ── GARCH ────────────────────────────────────────────────────
 const REG={UPTREND:{d:.0035,v:.012},DOWNTREND:{d:-.004,v:.014},SIDEWAYS:{d:0,v:.009},SURGE:{d:.009,v:.022},CRASH:{d:-.011,v:.026}};
@@ -292,6 +312,8 @@ PC.data.datasets=[
   {label:'MA5',data:[],borderColor:'#E24B4A',borderWidth:1,pointRadius:0,tension:.1,spanGaps:true},
   {label:'MA10',data:[],borderColor:'#CC7700',borderWidth:1,pointRadius:0,tension:.1,spanGaps:true},
   {label:'MA40',data:[],borderColor:'#0F6E56',borderWidth:1,pointRadius:0,tension:.1,spanGaps:true},
+  {label:'BB상단',data:[],borderColor:'rgba(156,110,222,0.7)',borderWidth:1,borderDash:[4,3],pointRadius:0,tension:.1,spanGaps:true,fill:false},
+  {label:'BB하단',data:[],borderColor:'rgba(156,110,222,0.7)',borderWidth:1,borderDash:[4,3],pointRadius:0,tension:.1,spanGaps:true,fill:false},
 ];
 VC.data.datasets=[{label:'V',data:[],backgroundColor:[]}];
 DC.data.datasets=[{label:'DD',data:[],borderColor:'#D85A30',backgroundColor:'rgba(216,90,48,.15)',fill:true,stepped:true,pointRadius:0,borderWidth:1.5}];
@@ -327,6 +349,8 @@ function refresh(){
   PC.data.datasets[0].data=vdata(i=>ma(5,i));
   PC.data.datasets[1].data=vdata(i=>ma(10,i));
   PC.data.datasets[2].data=vdata(i=>ma(40,i));
+  PC.data.datasets[3].data=showBB?vdata(i=>bbUpper(i)):vdata(()=>null);
+  PC.data.datasets[4].data=showBB?vdata(i=>bbLower(i)):vdata(()=>null);
   PC.options.plugins.ann.list=buildPA();
   let mn=Infinity,mx=-Infinity;
   for(let i=s;i<candles.length;i++){if(candles[i].low<mn)mn=candles[i].low;if(candles[i].high>mx)mx=candles[i].high;}
@@ -630,6 +654,14 @@ function getNextRandStock(){
 
 // ── 이벤트 ───────────────────────────────────────────────────
 document.getElementById('btnLoad').onclick=()=>{const v=document.getElementById('stockSel').value;if(v)loadReal(v);};
+document.getElementById('btnBB').onclick=()=>{
+  showBB=!showBB;
+  const btn=document.getElementById('btnBB');
+  btn.textContent='볼린저밴드 '+(showBB?'ON':'OFF');
+  btn.style.background=showBB?'rgba(156,110,222,0.1)':'#fafafa';
+  btn.style.fontWeight=showBB?'700':'400';
+  refresh();
+};
 document.getElementById('btnRandStock').onclick=()=>{
   if(!stockList.length)return;
   const s=getNextRandStock();
