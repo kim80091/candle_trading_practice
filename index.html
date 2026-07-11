@@ -759,14 +759,14 @@ async function loadStockList(){
   try{
     showOv('종목 목록 불러오는 중...');
     const res=await fetch(WORKER+'/list');
+    if(!res.ok)throw new Error('HTTP '+res.status);
     const js=await res.json();
-    hideOv();
     if(!js.stocks||!js.stocks.length){
+      hideOv();
       alert('저장된 종목이 없습니다.\nupload_stocks.py를 먼저 실행하세요.');
       return;
     }
     stockList=js.stocks;
-    // 셔플 초기화
     stockShuffled=[...stockList].sort(()=>Math.random()-.5);
     stockShuffleIdx=0;
     const sel=document.getElementById('stockSel');
@@ -777,9 +777,9 @@ async function loadStockList(){
       o.textContent=s.name+' ('+s.code+') — '+s.count+'일';
       sel.appendChild(o);
     });
-    // 랜덤 종목 자동 로드 (순환)
+    hideOv();
     const rnd=getNextRandStock();
-    document.getElementById('stockSel').value=rnd.code;
+    sel.value=rnd.code;
     loadReal(rnd.code);
   }catch(e){
     hideOv();
@@ -791,41 +791,40 @@ async function loadReal(code){
   stopT();
   try{
     const res=await fetch(WORKER+'/ohlcv?code='+code);
+    if(!res.ok)throw new Error('HTTP '+res.status);
     const js=await res.json();
     if(js.error)throw new Error(js.error);
-    if(!js.candles||js.candles.length<10)throw new Error('데이터 부족');
+    if(!js.candles||js.candles.length<10)throw new Error('데이터 부족 ('+(js.candles?.length||0)+'건)');
 
-    const allCandles=js.candles.map(d=>({open:d.open,high:d.high,low:d.low,close:d.close,volume:d.volume}));
+    const allCandles=js.candles.map(d=>({
+      open:+d.open,high:+d.high,low:+d.low,close:+d.close,volume:+d.volume
+    })).filter(d=>d.open>0&&d.close>0);
     const total=allCandles.length;
+    const minStart=Math.max(80,Math.floor(total*0.1));
+    const maxStart=Math.floor(total*0.8);
+    const startIdx=Math.floor(Math.random()*(maxStart-minStart+1))+minStart;
 
-    // 랜덤 시작 위치: MA80 계산이 가능한 최소 80봉 이후부터
-    // 전체의 10% ~ 80% 사이에서 랜덤 시작 (너무 끝에서 시작하면 연습 구간이 짧아짐)
-    const minStart = Math.max(80, Math.floor(total * 0.1));
-    const maxStart = Math.floor(total * 0.8);
-    const startIdx = Math.floor(Math.random() * (maxStart - minStart + 1)) + minStart;
-
-    // 시작 위치까지의 데이터만 로드 (이후는 시작 버튼으로 1봉씩 추가)
-    candles = allCandles.slice(0, startIdx);
-    // 전체 데이터 저장 (시작 이후 봉 추가용)
-    window._realAllCandles = allCandles;
-    window._realNextIdx = startIdx;
-
-    curStock={name:js.name||code,code:js.code,count:js.count,from:js.from,to:js.to,totalCandles:total};
-    elapsed=0;
-    reg='SIDEWAYS';rrem=25;sig2=1e-4;pe=0;
-    // resetStats 전에 candles/allCandles 먼저 설정
+    // 1) 통계 초기화
     resetStats();
+    // 2) 데이터 설정 (resetStats가 null로 만든 뒤 다시 세팅)
     candles=allCandles.slice(0,startIdx);
     window._realAllCandles=allCandles;
     window._realNextIdx=startIdx;
-    refresh();
-
+    // 3) 종목 정보
+    const stockName=js.name||stockList.find(s=>s.code===code)?.name||code;
+    curStock={name:stockName,code:code,count:js.count,from:js.from,to:js.to,totalCandles:total};
+    elapsed=0;
+    reg='SIDEWAYS';rrem=25;sig2=1e-4;pe=0;
+    // 4) 렌더링
     const startDate=allCandles[startIdx-1]?.date||'';
     const pct=((startIdx/total)*100).toFixed(0);
-    setBanner('📈 '+curStock.name+' ('+code+') | 전체 '+total+'일 중 '+pct+'% 지점('+startDate+')에서 시작','breal');
+    setBanner('📈 '+stockName+' ('+code+') | 전체 '+total+'일 중 '+pct+'% 지점('+startDate+')에서 시작','breal');
     hideOv();
+    refresh();
   }catch(e){
-    hideOv();alert('불러오기 실패: '+e.message);
+    hideOv();
+    console.error('loadReal 오류:',e);
+    alert('불러오기 실패: '+e.message);
   }
 }
 
