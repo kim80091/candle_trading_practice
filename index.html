@@ -397,7 +397,7 @@ function updateUI(){
   if(!candles.length)return;
   const last=candles[candles.length-1];
   const nm=curStock?' '+curStock.name:'';
-  document.getElementById('prLabel').textContent='가격: '+fp(last.close)+nm;
+  document.getElementById('prLabel').textContent='가격: '+fp(last.close);
   if(pos){
     document.getElementById('vEntry').textContent=fp(pos.p);
     const net=(last.close-pos.p)/pos.p*100-FEE*100;
