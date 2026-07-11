@@ -86,13 +86,14 @@ button:active{opacity:.8;}
   <button id="s2">2초</button><button id="s3">3초</button>
 </div>
 
-<!-- 시작/일시정지/리셋 + 경과 -->
+<!-- 시작/일시정지/리셋 -->
 <div class="row">
   <button id="btnStart">▶ 시작</button>
   <button id="btnPause">⏸ 일시정지</button>
   <button id="btnReset">↺ 리셋</button>
-  <span class="dayl" id="dayLabel">경과: 0일째 (0개월)</span>
 </div>
+<!-- 경과 좌측 표시 -->
+<div style="font-size:13px;font-weight:600;margin-bottom:8px;" id="dayLabel">경과: 0일째 (0개월)</div>
 
 <!-- 통계 카드 -->
 <div class="stats">
@@ -810,9 +811,14 @@ async function loadReal(code){
     window._realNextIdx = startIdx;
 
     curStock={name:js.name||code,code:js.code,count:js.count,from:js.from,to:js.to,totalCandles:total};
-    elapsed=0;  // 연습 시작 시점부터 0으로 카운팅
+    elapsed=0;
     reg='SIDEWAYS';rrem=25;sig2=1e-4;pe=0;
-    resetStats();refresh();
+    // resetStats 전에 candles/allCandles 먼저 설정
+    resetStats();
+    candles=allCandles.slice(0,startIdx);
+    window._realAllCandles=allCandles;
+    window._realNextIdx=startIdx;
+    refresh();
 
     const startDate=allCandles[startIdx-1]?.date||'';
     const pct=((startIdx/total)*100).toFixed(0);
