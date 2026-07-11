@@ -427,13 +427,7 @@ function refresh(){
   const mcData=vdata(i=>ma40Cross(i));
   MC.data.datasets[0].data=mcData;
   MC.data.datasets[0].backgroundColor=mcData.map(v=>v===1?'rgba(245,166,35,0.9)':v===-1?'rgba(46,205,167,0.9)':'rgba(0,0,0,0)');
-  // 크로스 화살표 annotation (막대 위에 작은 화살표)
-  const mcAnns=[];
-  mcData.forEach((v,li)=>{
-    if(v===1) mcAnns.push({t:'arrow',xi:li,yi:1.1,cl:'#F5A623',up:true,sz:0.35});
-    else if(v===-1) mcAnns.push({t:'arrow',xi:li,yi:-1.1,cl:'#2ECDA7',up:false,sz:0.35});
-  });
-  MC.options.plugins.ann.list=mcAnns;
+  MC.options.plugins.ann.list=[];
   const lastCross=ma40Cross(candles.length-1);
   const crossEl=document.getElementById('vMaCross');
   if(lastCross===1){crossEl.textContent='▲ 골든크로스';crossEl.style.color='#F5A623';}
