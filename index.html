@@ -31,8 +31,6 @@ button:active{opacity:.8;}
 .cwrap canvas{position:absolute;top:0;left:0;width:100%;height:100%;}
 .ddrow{display:flex;justify-content:space-between;padding:4px 8px 0;font-size:11px;color:#888;}
 .ddval{font-size:13px;font-weight:700;color:#D85A30;}
-#stockRow{display:none;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px;}
-#stockRow.show{display:flex;}
 #stockSel{font-family:inherit;font-size:13px;padding:5px 8px;border-radius:8px;border:1px solid #ccc;max-width:200px;}
 .logtitle{font-size:12px;color:#888;margin-top:6px;margin-bottom:3px;}
 #tlog{font-size:12px;max-height:100px;overflow-y:auto;border:1px solid #eaeaea;border-radius:8px;padding:5px 9px;}
@@ -41,7 +39,8 @@ button:active{opacity:.8;}
 .spin{width:40px;height:40px;border:4px solid #ddd;border-top-color:#378ADD;border-radius:50%;animation:sp .8s linear infinite;}
 #ovmsg{font-size:15px;font-weight:700;color:#378ADD;}
 @keyframes sp{to{transform:rotate(360deg)}}
-.mbuy{display:none;}
+.tradebtns{display:flex;gap:8px;margin:6px 0;}
+.tradebtns button{flex:1;padding:10px;font-size:14px;font-weight:700;}
 /* AI 패널 */
 #aiPanel{margin-top:14px;display:none;}
 .ai-title{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;font-size:13px;font-weight:700;color:#378ADD;}
@@ -54,9 +53,6 @@ button:active{opacity:.8;}
 @media(max-width:599px){
   .stats{grid-template-columns:repeat(2,1fr);}
   .cwrap.pc{height:260px;}.cwrap.vc{height:75px;}.cwrap.dc{height:55px;}
-  .hideMob{display:none;}
-  .mbuy{display:flex;gap:8px;margin:8px 0;}
-  .mbuy button{flex:1;padding:12px;font-size:15px;font-weight:700;}
 }
 </style>
 </head>
@@ -64,38 +60,41 @@ button:active{opacity:.8;}
 
 <div id="overlay"><div class="spin"></div><div id="ovmsg">로딩 중...</div></div>
 
-<div class="row">
-  <button id="btnRand" class="mrand">📊 랜덤 생성</button>
-  <button id="btnReal" class="minact">📈 실제 종목</button>
-  <span class="prl" id="prLabel">가격: -</span>
+<!-- 제목 + 종목 선택 -->
+<div class="row" style="margin-bottom:6px;">
+  <span style="font-size:16px;font-weight:800;color:#1a1a1a;">일봉 실전차트 매매 연습</span>
+  <span class="prl" id="prLabel" style="font-size:13px;"></span>
 </div>
-<div id="stockRow">
-  <select id="stockSel"><option>종목 로딩 중...</option></select>
+<div class="row" style="margin-bottom:6px;">
+  <select id="stockSel" style="font-family:inherit;font-size:13px;padding:5px 8px;border-radius:8px;border:1px solid #ccc;flex:1;max-width:220px;"></select>
   <button id="btnLoad" style="font-weight:700">불러오기</button>
   <button id="btnRandStock">🎲 랜덤</button>
 </div>
-<div class="banner brand" id="banner">📊 랜덤 생성 모드 — 시장 국면 시뮬레이터</div>
-<div class="row">
-  <button id="btnStart">▶ 시작</button>
-  <button id="btnPause">⏸ 일시정지</button>
-  <button class="g hideMob" id="btnHalfBuy" style="font-size:11px;padding:6px 8px;">½매수</button>
-  <button class="g hideMob" id="btnBuy">매수</button>
-  <button class="r hideMob" id="btnSell">매도</button>
-  <button class="r hideMob" id="btnHalfSell" style="font-size:11px;padding:6px 8px;">½매도</button>
-  <button id="btnReset">↺ 리셋</button>
-</div>
-<div class="row">
-  <span>속도</span>
-  <button id="s05">0.5초</button><button id="s1" class="b">1초</button>
-  <button id="s2">2초</button><button id="s3">3초</button>
-  <span class="dayl" id="dayLabel">경과: 0일째 (0개월)</span>
-</div>
+<div class="banner breal" id="banner">📈 종목 로딩 중...</div>
+
+<!-- 원금 -->
 <div class="row">
   <span>원금</span>
   <button id="c1">1천만</button><button id="c5">5천만</button>
   <button id="c10" class="b">1억</button>
 </div>
 
+<!-- 속도 -->
+<div class="row">
+  <span>속도</span>
+  <button id="s05">0.5초</button><button id="s1" class="b">1초</button>
+  <button id="s2">2초</button><button id="s3">3초</button>
+</div>
+
+<!-- 시작/일시정지/리셋 + 경과 -->
+<div class="row">
+  <button id="btnStart">▶ 시작</button>
+  <button id="btnPause">⏸ 일시정지</button>
+  <button id="btnReset">↺ 리셋</button>
+  <span class="dayl" id="dayLabel">경과: 0일째 (0개월)</span>
+</div>
+
+<!-- 통계 카드 -->
 <div class="stats">
   <div class="card"><div class="lbl">평가자산</div><div class="val" id="vAsset">100,000,000원</div></div>
   <div class="card"><div class="lbl">매수가</div><div class="val" id="vEntry">-</div></div>
@@ -107,13 +106,18 @@ button:active{opacity:.8;}
   <div class="card"><div class="lbl">현재 손익(수수료 차감)</div><div class="val" id="vPnl">-</div></div>
 </div>
 
+<!-- 캔들 차트 -->
 <div class="cbox"><div class="cwrap pc"><canvas id="cPrice"></canvas></div></div>
-<div class="mbuy">
-  <button class="g" id="btnHalfBuyM" style="font-size:12px;">½매수</button>
-  <button class="g" id="btnBuyM">매수</button>
-  <button class="r" id="btnSellM">매도</button>
-  <button class="r" id="btnHalfSellM" style="font-size:12px;">½매도</button>
+
+<!-- 매수매도 버튼 (차트 아래, 보조지표 위) -->
+<div class="tradebtns">
+  <button class="g" id="btnHalfBuy" style="font-size:12px;">½매수</button>
+  <button class="g" id="btnBuy">매수</button>
+  <button class="r" id="btnSell">매도</button>
+  <button class="r" id="btnHalfSell" style="font-size:12px;">½매도</button>
 </div>
+
+<!-- 보조지표 -->
 <div class="cbox">
   <div class="ddrow"><span>MA40 추세 방향</span><span class="ddval" id="vMaTrend" style="color:#378ADD;">-</span></div>
   <div class="cwrap" style="height:55px;"><canvas id="cMaTrend"></canvas></div>
@@ -156,7 +160,7 @@ button:active{opacity:.8;}
 
 const WORKER='https://kis-stock-proxy.kim80091.workers.dev';
 const FEE=.005, VP=8, VIS=90, INIT=90;
-let MODE='rand', stockList=[], curStock=null;
+let MODE='real', stockList=[], curStock=null;
 let candles=[], timer=null, pos=null, tPnl=0, trades=[];
 let intSec=1, elapsed=0, capital=100000000;
 let wins=0, losses=0, holdSum=0;
@@ -956,20 +960,12 @@ ${tradeHistory.slice(-5).map(t=>'#'+t.no+': '+(t.win?'수익':'손실')+' '+t.ne
 
 // ── 모드 전환 ────────────────────────────────────────────────
 function setMode(m){
-  MODE=m;const ir=m==='real';
-  document.getElementById('btnRand').className=ir?'minact':'mrand';
-  document.getElementById('btnReal').className=ir?'mreal':'minact';
-  document.getElementById('stockRow').className=ir?'show':'';
-  if(!ir){
-    setBanner('📊 랜덤 생성 모드 — 시장 국면 시뮬레이터','brand');
-    curStock=null;initRand();
-  }else{
-    if(!stockList.length)loadStockList();
-    else{
-      const s=getNextRandStock();
-      document.getElementById('stockSel').value=s.code;
-      loadReal(s.code);
-    }
+  MODE='real';
+  if(!stockList.length)loadStockList();
+  else{
+    const s=getNextRandStock();
+    document.getElementById('stockSel').value=s.code;
+    loadReal(s.code);
   }
 }
 function setBanner(t,c){
@@ -983,8 +979,6 @@ function showOv(m){
 function hideOv(){document.getElementById('overlay').className='';}
 
 // ── 이벤트 ───────────────────────────────────────────────────
-document.getElementById('btnRand').onclick=()=>setMode('rand');
-document.getElementById('btnReal').onclick=()=>setMode('real');
 document.getElementById('btnLoad').onclick=()=>{
   const v=document.getElementById('stockSel').value;
   if(v)loadReal(v);
@@ -1011,8 +1005,9 @@ document.getElementById('btnStart').onclick=startT;
 document.getElementById('btnPause').onclick=stopT;
 document.getElementById('btnReset').onclick=()=>{
   stopT();
-  if(MODE==='rand')initRand();
-  else{resetStats();if(curStock)loadReal(curStock.code);else refresh();}
+  resetStats();
+  if(curStock)loadReal(curStock.code);
+  else refresh();
 };
 document.getElementById('btnBuy').onclick=doBuy;
 document.getElementById('btnHalfBuy').onclick=doHalfBuy;
@@ -1039,7 +1034,7 @@ document.getElementById('btnSellM').onclick=doSell;
 });
 
 // ── 시작 ─────────────────────────────────────────────────────
-setMode('real');
+loadStockList();
 
 })();
 </script>
