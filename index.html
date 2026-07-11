@@ -130,6 +130,10 @@ button:active{opacity:.8;}
   <div class="cwrap" style="height:55px;"><canvas id="cMaCross"></canvas></div>
 </div>
 <div class="cbox">
+  <div class="ddrow"><span>OBV (시그널 MA10)</span><span class="ddval" id="vObv" style="color:#555;"></span></div>
+  <div class="cwrap" style="height:55px;"><canvas id="cObv"></canvas></div>
+</div>
+<div class="cbox">
   <div class="ddrow"><span>60일 최고가 대비 하락률</span><span class="ddval" id="vDd">0%</span></div>
   <div class="cwrap dc"><canvas id="cDd"></canvas></div>
 </div>
@@ -235,6 +239,22 @@ function ma40Cross(idx){
   return 0;
 }
 
+// ── OBV 계산 (캐시 방식) ─────────────────────────────────────
+function calcOBV(idx){
+  let obv=0;
+  for(let i=1;i<=idx;i++){
+    if(candles[i].close>candles[i-1].close)obv+=candles[i].volume;
+    else if(candles[i].close<candles[i-1].close)obv-=candles[i].volume;
+  }
+  return obv;
+}
+function calcOBVSignal(idx){
+  if(idx<10)return null;
+  let sum=0;
+  for(let i=idx-9;i<=idx;i++)sum+=calcOBV(i);
+  return sum/10;
+}
+
 // ── 스냅샷 ───────────────────────────────────────────────────
 function snapshot(idx){
   if(idx<0||idx>=candles.length)return null;
@@ -317,6 +337,29 @@ const MC=new Chart(document.getElementById('cMaCross'),{
     plugins:{legend:{display:false},tooltip:{enabled:false}}},plugins:[]
 });
 
+// OBV 차트
+const OC=new Chart(document.getElementById('cObv'),{
+  type:'line',
+  data:{labels:[],datasets:[
+    {label:'OBV',data:[],borderColor:'#378ADD',borderWidth:1.5,pointRadius:0,tension:.1,spanGaps:true},
+    {label:'Signal',data:[],borderColor:'#E24B4A',borderWidth:1,pointRadius:0,tension:.1,spanGaps:true,borderDash:[3,2]},
+  ]},
+  options:{responsive:true,maintainAspectRatio:false,animation:false,layout:{padding:{left:4,right:4}},
+    interaction:{intersect:false},
+    scales:{
+      x:{ticks:{display:false},grid:{display:false},min:0,max:VIS+VP-1},
+      y:{position:'right',ticks:{font:{size:9},padding:6,callback:v=>{
+        const abs=Math.abs(v);
+        if(abs>=1e9)return(v/1e9).toFixed(1)+'B';
+        if(abs>=1e6)return(v/1e6).toFixed(1)+'M';
+        if(abs>=1e3)return(v/1e3).toFixed(0)+'K';
+        return v;
+      }},afterFit:s=>{s.width=64;},grid:{color:'rgba(128,128,128,.1)'}}
+    },
+    plugins:{legend:{display:false},tooltip:{enabled:false}}
+  },plugins:[]
+});
+
 PC.data.datasets=[
   {label:'MA10',data:[],borderColor:'#CC7700',borderWidth:1,pointRadius:0,tension:.1,spanGaps:true},
   {label:'MA40',data:[],borderColor:'#0F6E56',borderWidth:1,pointRadius:0,tension:.1,spanGaps:true},
@@ -391,6 +434,45 @@ function refresh(){
   else{crossEl.textContent='-';crossEl.style.color='#555';}
 
   PC.update('none');VC.update('none');DC.update('none');MT.update('none');MC.update('none');
+
+  // OBV 갱신 (캐시 배열로 최적화)
+  OC.data.labels=lbls;
+  // OBV 배열 전체 계산 (뷰 범위만)
+  const s2=vs();
+  const obvArr=[];
+  let obvVal=0;
+  for(let i=0;i<candles.length;i++){
+    if(i===0){obvArr.push(0);continue;}
+    if(candles[i].close>candles[i-1].close)obvVal+=candles[i].volume;
+    else if(candles[i].close<candles[i-1].close)obvVal-=candles[i].volume;
+    obvArr.push(obvVal);
+  }
+  // 뷰 데이터 추출
+  const obvView=[];
+  for(let i=s2;i<candles.length;i++)obvView.push(obvArr[i]);
+  while(obvView.length<VIS)obvView.unshift(null);
+  for(let i=0;i<VP;i++)obvView.push(null);
+  // 시그널(MA10) 계산
+  const sigView=[];
+  for(let i=s2;i<candles.length;i++){
+    if(i<10){sigView.push(null);continue;}
+    let sum=0;for(let j=i-9;j<=i;j++)sum+=obvArr[j];
+    sigView.push(sum/10);
+  }
+  while(sigView.length<VIS)sigView.unshift(null);
+  for(let i=0;i<VP;i++)sigView.push(null);
+  OC.data.datasets[0].data=obvView;
+  OC.data.datasets[1].data=sigView;
+  // 현재 OBV 값 표시
+  const obvNow=obvArr[candles.length-1]||0;
+  const obvEl=document.getElementById('vObv');
+  if(obvEl){
+    const abs=Math.abs(obvNow);
+    const txt=abs>=1e9?(obvNow/1e9).toFixed(2)+'B':abs>=1e6?(obvNow/1e6).toFixed(2)+'M':abs>=1e3?(obvNow/1e3).toFixed(0)+'K':String(Math.round(obvNow));
+    obvEl.textContent=txt;
+    obvEl.style.color=obvNow>=0?'#0F6E56':'#993556';
+  }
+  OC.update('none');
   updateUI();
 }
 
