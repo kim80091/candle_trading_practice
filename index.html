@@ -25,10 +25,16 @@ button:active{opacity:.8;}
 .cwrap canvas{position:absolute;top:0;left:0;width:100%;height:100%;}
 .ddrow{display:flex;justify-content:space-between;padding:4px 8px 0;font-size:11px;color:#888;}
 .ddval{font-size:13px;font-weight:700;color:#D85A30;}
-.tradebtns{display:flex;gap:8px;margin:6px 0;}
-.tradebtns button{flex:1;padding:10px;font-size:clamp(13px,1.3vw,17px);font-weight:700;}
+.tradebtns{display:flex;gap:6px;margin:6px 0;}
+.tradebtns button{flex:1;padding:10px;font-size:clamp(13px,1.3vw,17px);font-weight:700;transition:transform 0.08s,box-shadow 0.08s,background 0.08s;}
+.tradebtns button:active{transform:scale(0.93);box-shadow:inset 0 2px 6px rgba(0,0,0,0.18);}
+.tradebtns button.g:active{background:rgba(15,110,86,0.12);}
+.tradebtns button.r:active{background:rgba(153,53,86,0.12);}
+.tradebtns button#btnPlayPause{flex:0.5;font-size:clamp(11px,1.2vw,15px);}
+.tradebtns button#btnPlayPause:active{background:rgba(55,138,221,0.12);}
 @media(max-width:599px){
   .tradebtns button{font-size:clamp(12px,3.6vw,16px);}
+  .tradebtns button#btnPlayPause{font-size:clamp(11px,3vw,14px);}
 }
 .logtitle{font-size:12px;color:#888;margin-top:6px;margin-bottom:3px;}
 #tlog{font-size:12px;max-height:100px;overflow-y:auto;border:1px solid #eaeaea;border-radius:8px;padding:5px 9px;}
@@ -61,7 +67,7 @@ button:active{opacity:.8;}
   <select id="stockSel" style="font-family:inherit;font-size:13px;padding:5px 8px;border-radius:8px;border:1px solid #ccc;flex:1;max-width:220px;"></select>
   <button id="btnLoad" style="font-weight:700">불러오기</button>
   <button id="btnRandStock">🎲 랜덤</button>
-  <span id="prLabel" style="margin-left:auto;font-size:13px;font-weight:700;"></span>
+  <button id="btnReset" style="padding:6px 10px;font-size:15px;">↺</button>
 </div>
 <div class="banner breal" id="banner">📈 종목 로딩 중...</div>
 
@@ -82,16 +88,10 @@ button:active{opacity:.8;}
   <button id="s3">3초</button>
 </div>
 
-<!-- 시작/일시정지/리셋 -->
-<div class="row">
-  <button id="btnStart">▶ 시작</button>
-  <button id="btnPause">⏸ 일시정지</button>
-  <button id="btnReset">↺ 리셋</button>
-</div>
 <!-- 통계 카드 -->
 <div class="stats">
   <div class="card"><div class="lbl">평가자산</div><div class="val" id="vAsset">100,000,000원</div></div>
-  <div class="card"><div class="lbl">매수가</div><div class="val" id="vEntry">-</div></div>
+  <div class="card"><div class="lbl">누적손익 금액</div><div class="val" id="vPnlAmt">0원</div></div>
   <div class="card"><div class="lbl">평균 보유기간</div><div class="val" id="vAvgHold">-</div></div>
   <div class="card"><div class="lbl">매매 승률 (횟수)</div><div class="val" id="vWin">-</div></div>
   <div class="card"><div class="lbl">보유 경과</div><div class="val" id="vHold">-</div></div>
@@ -118,6 +118,7 @@ button:active{opacity:.8;}
   <button class="g" id="btnBuy">매수</button>
   <button class="r" id="btnSell">매도</button>
   <button class="r" id="btnHalfSell">½매도</button>
+  <button id="btnPlayPause" style="font-size:clamp(11px,1.2vw,15px);border-color:#378ADD;color:#378ADD;font-weight:700;">▶</button>
 </div>
 
 <!-- 보조지표 -->
@@ -290,7 +291,8 @@ function maStatus(s){
 }
 
 // ── 차트 플러그인 ─────────────────────────────────────────────
-const uC='#E24B4A',dC='#378ADD',uV='rgba(226,75,74,.5)',dV='rgba(55,138,221,.5)',bC='#0F6E56',sC='#993556';
+const uC='#E24B4A',dC='#378ADD',uV='rgba(226,75,74,.5)',dV='rgba(55,138,221,.5)',bC='#E24B4A',sC='#378ADD';
+const buyArrowC='#0F6E56', sellArrowC='#993556'; // 매수화살표 초록, 매도화살표 빨강
 Chart.register({id:'ann',afterDraw(chart){
   const o=chart.options.plugins&&chart.options.plugins.ann;if(!o||!o.list)return;
   const{ctx,scales}=chart;const x=scales.x,y=scales.y;ctx.save();
@@ -385,8 +387,8 @@ function buildPA(){
   trades.forEach(t=>{
     if(t.i<s||t.i>=candles.length)return;
     const c=candles[t.i],li=t.i-s,sz=t.half?0.65:1.0;
-    if(t.buy)list.push({t:'arrow',xi:li,yi:c.low*.985,cl:bC,up:true,sz});
-    else list.push({t:'arrow',xi:li,yi:c.high*1.015,cl:sC,up:false,sz});
+    if(t.buy)list.push({t:'arrow',xi:li,yi:c.low*.985,cl:buyArrowC,up:true,sz});
+    else list.push({t:'arrow',xi:li,yi:c.high*1.015,cl:sellArrowC,up:false,sz});
   });
   return list;
 }
@@ -501,21 +503,23 @@ function updateUI(){
   const nm=curStock?' '+curStock.name:'';
   document.getElementById('prLabel').textContent='가격: '+fp(last.close);
   if(pos){
-    document.getElementById('vEntry').textContent=fp(pos.p);
     const net=(last.close-pos.p)/pos.p*100-FEE*100;
     const el=document.getElementById('vPnl');el.textContent=net.toFixed(1)+'%';el.style.color=net>=0?bC:sC;
     document.getElementById('vHold').textContent=(elapsed-pos.d)+'일째';
   }else if(halfSlots.length>0){
     const avgP=halfSlots.reduce((s,h)=>s+h.p,0)/halfSlots.length;
-    document.getElementById('vEntry').textContent=fp(Math.round(avgP))+'(분할)';
     const net=(last.close-avgP)/avgP*100-FEE*100;
     const el=document.getElementById('vPnl');el.textContent=net.toFixed(1)+'%';el.style.color=net>=0?bC:sC;
     document.getElementById('vHold').textContent=(elapsed-halfSlots[0].d)+'일째';
   }else{
-    document.getElementById('vEntry').textContent='-';
     const el=document.getElementById('vPnl');el.textContent='-';el.style.color='#1a1a1a';
     document.getElementById('vHold').textContent='-';
   }
+  // 누적손익 금액 (원금 기준 따고 잃은 돈만)
+  const pnlAmt=Math.round(capital*tPnl/100);
+  const pnlEl=document.getElementById('vPnlAmt');
+  pnlEl.textContent=(pnlAmt>=0?'+':'')+fp(pnlAmt)+'원';
+  pnlEl.style.color=pnlAmt>0?bC:(pnlAmt<0?sC:'#1a1a1a');
   const tot=wins+losses;
   const tel=document.getElementById('vTotal');tel.textContent=tot+'회';tel.style.color=tot>0?'#1a1a1a':'#888';
   let asset=capital*(1+tPnl/100);
@@ -609,8 +613,8 @@ function tick(){
   if(candles.length>600){candles.shift();trades.forEach(t=>{t.i--;});if(pos)pos.i--;trades=trades.filter(t=>t.i>=0);}
   refresh();
 }
-function startT(){if(timer)clearInterval(timer);timer=setInterval(tick,intSec*1000);}
-function stopT(){if(timer){clearInterval(timer);timer=null;}}
+function startT(){if(timer)clearInterval(timer);timer=setInterval(tick,intSec*1000);const btn=document.getElementById("btnPlayPause");if(btn)btn.textContent="⏸";}
+function stopT(){if(timer){clearInterval(timer);timer=null;}const btn=document.getElementById("btnPlayPause");if(btn)btn.textContent="▶";}
 
 // ── 초기화 ───────────────────────────────────────────────────
 function resetStats(){
@@ -776,6 +780,10 @@ document.getElementById('btnRandStock').onclick=()=>{
 };
 document.getElementById('btnStart').onclick=startT;
 document.getElementById('btnPause').onclick=stopT;
+document.getElementById('btnPlayPause').onclick=()=>{
+  if(timer){stopT();document.getElementById('btnPlayPause').textContent='▶';}
+  else{startT();document.getElementById('btnPlayPause').textContent='⏸';}
+};
 document.getElementById('btnReset').onclick=()=>{stopT();resetStats();if(curStock)loadReal(curStock.code);};
 document.getElementById('btnBuy').onclick=doBuy;
 document.getElementById('btnHalfBuy').onclick=doHalfBuy;
