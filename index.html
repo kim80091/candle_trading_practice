@@ -162,7 +162,7 @@ const WORKER='https://kis-stock-proxy.kim80091.workers.dev';
 const FEE=.0023, VP=8, VIS=90, INIT=90;
 let MODE='real', stockList=[], curStock=null;
 let candles=[], timer=null, pos=null, tPnl=0, trades=[];
-let intSec=1, elapsed=0, capital=100000000;
+let intSec=+(localStorage.getItem('intSec')||1), elapsed=0, capital=+(localStorage.getItem('capital')||100000000);
 let wins=0, losses=0, holdSum=0;
 let tradeHistory=[], aiCount=0;
 let halfSlots=[];
@@ -793,14 +793,31 @@ document.getElementById('btnSell').onclick=doSell;
 
 [['s05',.5],['s1',1],['s2',2],['s3',3]].forEach(([id,v])=>{
   document.getElementById(id).onclick=()=>{
-    intSec=v;['s05','s1','s2','s3'].forEach(k=>document.getElementById(k).className=k===id?'b':'');
+    intSec=v;
+    localStorage.setItem('intSec',v);
+    ['s05','s1','s2','s3'].forEach(k=>document.getElementById(k).className=k===id?'b':'');
     if(timer)startT();
   };
 });
 [['c1',10000000],['c5',50000000],['c10',100000000]].forEach(([id,v])=>{
   document.getElementById(id).onclick=()=>{
-    capital=v;['c1','c5','c10'].forEach(k=>document.getElementById(k).className=k===id?'b':'');updateUI();
+    capital=v;
+    localStorage.setItem('capital',v);
+    ['c1','c5','c10'].forEach(k=>document.getElementById(k).className=k===id?'b':'');
+    updateUI();
   };
+});
+
+// ── 초기 버튼 상태 복원 ──────────────────────────────────────
+// 속도 버튼
+const speedMap={'s05':.5,'s1':1,'s2':2,'s3':3};
+Object.entries(speedMap).forEach(([id,v])=>{
+  document.getElementById(id).className=v===intSec?'b':'';
+});
+// 원금 버튼
+const capMap={'c1':10000000,'c5':50000000,'c10':100000000};
+Object.entries(capMap).forEach(([id,v])=>{
+  document.getElementById(id).className=v===capital?'b':'';
 });
 
 // ── 시작 ─────────────────────────────────────────────────────
