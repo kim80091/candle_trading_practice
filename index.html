@@ -132,16 +132,20 @@ button:active{opacity:.8;}
   <div class="cwrap" style="height:55px;"><canvas id="cMaCross"></canvas></div>
 </div>
 <div class="cbox">
+  <div class="ddrow"><span>거래대금</span><span class="ddval" id="vVol" style="color:#CC7700;"></span></div>
+  <div class="cwrap vc"><canvas id="cVol"></canvas></div>
+</div>
+<div class="cbox">
+  <div class="ddrow"><span>볼린저밴드 이격</span><span class="ddval" id="vBBW" style="color:#9C6EDE;">-</span></div>
+  <div class="cwrap" style="height:55px;"><canvas id="cBBW"></canvas></div>
+</div>
+<div class="cbox">
   <div class="ddrow"><span>OBV (시그널 MA10)</span><span class="ddval" id="vObv" style="color:#555;"></span></div>
   <div class="cwrap" style="height:55px;"><canvas id="cObv"></canvas></div>
 </div>
 <div class="cbox">
   <div class="ddrow"><span>60일 최고가 대비 하락률</span><span class="ddval" id="vDd">0%</span></div>
   <div class="cwrap dc"><canvas id="cDd"></canvas></div>
-</div>
-<div class="cbox">
-  <div class="ddrow"><span>거래량</span><span class="ddval" id="vVol" style="color:#555;"></span></div>
-  <div class="cwrap vc"><canvas id="cVol"></canvas></div>
 </div>
 
 <div class="logtitle">거래 내역</div>
@@ -241,7 +245,23 @@ function ma40Cross(idx){
   return 0;
 }
 
-// ── OBV 계산 (캐시 방식) ─────────────────────────────────────
+// ── 볼린저밴드 이격 계산 ─────────────────────────────────────
+// 상한선 가까우면 +10, 하한선 가까우면 -10 사이 값
+function bbDeviation(idx){
+  if(idx+1<20)return null;
+  let sum=0;for(let i=idx-19;i<=idx;i++)sum+=candles[i].close;
+  const mean=sum/20;
+  let variance=0;for(let i=idx-19;i<=idx;i++)variance+=(candles[i].close-mean)**2;
+  const std=Math.sqrt(variance/20);
+  const upper=mean+2*std;
+  const lower=mean-2*std;
+  const bandwidth=upper-lower;
+  if(bandwidth===0)return 0;
+  const close=candles[idx].close;
+  // -10~+10 사이로 정규화
+  const pos=(close-lower)/bandwidth; // 0=하단, 1=상단
+  return (pos*20)-10; // -10~+10
+}
 function calcOBV(idx){
   let obv=0;
   for(let i=1;i<=idx;i++){
@@ -323,7 +343,13 @@ function mkChart(id,type,yEx){
   });
 }
 const PC=mkChart('cPrice','line');
-const VC=mkChart('cVol','bar',{beginAtZero:true,ticks:{font:{size:10},padding:6,callback:v=>Math.round(v).toLocaleString('ko-KR')}});
+const VC=mkChart('cVol','bar',{beginAtZero:true,ticks:{font:{size:10},padding:6,callback:v=>{
+  const abs=Math.abs(v);
+  if(abs>=1e12)return(v/1e12).toFixed(0)+'조';
+  if(abs>=1e8)return(v/1e8).toFixed(0)+'억';
+  if(abs>=1e4)return(v/1e4).toFixed(0)+'만';
+  return Math.round(v).toLocaleString();
+}}});
 const DC=mkChart('cDd','line',{min:-55,max:0,ticks:{stepSize:10,font:{size:10}}});
 const MT=new Chart(document.getElementById('cMaTrend'),{
   type:'bar',data:{labels:[],datasets:[{label:'MA40방향',data:[],backgroundColor:[]}]},
@@ -340,7 +366,28 @@ const MC=new Chart(document.getElementById('cMaCross'),{
     plugins:{legend:{display:false},tooltip:{enabled:false},ann:{list:[]}}},plugins:[]
 });
 
-// OBV 차트
+// 볼린저밴드 이격 차트
+const BW=new Chart(document.getElementById('cBBW'),{
+  type:'line',
+  data:{labels:[],datasets:[
+    {label:'BB이격',data:[],borderColor:'#9C6EDE',backgroundColor:'rgba(156,110,222,0.1)',borderWidth:1.5,pointRadius:0,tension:.3,spanGaps:true,fill:true},
+  ]},
+  options:{responsive:true,maintainAspectRatio:false,animation:false,layout:{padding:{left:4,right:4}},
+    interaction:{intersect:false},
+    scales:{
+      x:{ticks:{display:false},grid:{display:false},min:0,max:VIS+VP-1},
+      y:{position:'right',min:-11,max:11,
+        ticks:{font:{size:10},padding:6,callback:v=>v===10?'상단':v===-10?'하단':v===0?'중간':'',stepSize:10},
+        afterFit:s=>{s.width=64;},
+        grid:{color:'rgba(128,128,128,.1)'}}
+    },
+    plugins:{legend:{display:false},tooltip:{enabled:false},ann:{list:[
+      {t:'hline',x1:0,x2:VIS+VP-1,yv:0,cl:'rgba(128,128,128,0.3)'},   // 중심선
+      {t:'hline',x1:0,x2:VIS+VP-1,yv:8,cl:'rgba(226,75,74,0.25)'},    // 상단 경계
+      {t:'hline',x1:0,x2:VIS+VP-1,yv:-8,cl:'rgba(55,138,221,0.25)'},  // 하단 경계
+    ]}}
+  },plugins:[]
+});
 const OC=new Chart(document.getElementById('cObv'),{
   type:'line',
   data:{labels:[],datasets:[
@@ -393,7 +440,16 @@ function buildPA(){
   });
   return list;
 }
-function buildVA(){const hv=hvol(candles.length-1),vc=candles.length-vs();return[{t:'hline',x1:0,x2:vc-1+VP,yv:hv,cl:'#D4537E'}];}
+function buildVA(){
+  const s=Math.max(0,candles.length-60);
+  let hv=0;
+  for(let i=s;i<candles.length;i++){
+    const amt=candles[i].close*candles[i].volume;
+    if(amt>hv)hv=amt;
+  }
+  const vc=candles.length-vs();
+  return[{t:'hline',x1:0,x2:vc-1+VP,yv:hv,cl:'rgba(204,119,0,0.4)'}];
+}
 
 // ── 차트 갱신 ────────────────────────────────────────────────
 function refresh(){
@@ -410,8 +466,8 @@ function refresh(){
   const pd=(mx-mn)*.08;PC.options.scales.y.min=mn-pd;PC.options.scales.y.max=mx+pd;
 
   VC.data.labels=lbls;
-  VC.data.datasets[0].data=vdata(i=>candles[i].volume);
-  VC.data.datasets[0].backgroundColor=candles.slice(s).map(c=>c.close>=c.open?uV:dV);
+  VC.data.datasets[0].data=vdata(i=>candles[i].close*candles[i].volume);
+  VC.data.datasets[0].backgroundColor='rgba(204,119,0,0.6)';
   VC.options.plugins.ann.list=buildVA();
 
   DC.data.labels=lbls;DC.data.datasets[0].data=vdata(i=>ddS(i));
@@ -436,6 +492,19 @@ function refresh(){
   if(lastCross===1){crossEl.textContent='▲ 골든크로스';crossEl.style.color='#F5A623';}
   else if(lastCross===-1){crossEl.textContent='▼ 데드크로스';crossEl.style.color='#2ECDA7';}
   else{crossEl.textContent='-';crossEl.style.color='#555';}
+
+  // 볼린저밴드 이격
+  BW.data.labels=lbls;
+  const bbwData=vdata(i=>bbDeviation(i));
+  BW.data.datasets[0].data=bbwData;
+  // 현재값 표시
+  const bbwNow=bbDeviation(candles.length-1);
+  const bbwEl=document.getElementById('vBBW');
+  if(bbwEl&&bbwNow!==null){
+    bbwEl.textContent=bbwNow.toFixed(1);
+    bbwEl.style.color=bbwNow>=5?'#E24B4A':bbwNow<=-5?'#378ADD':'#9C6EDE';
+  }
+  BW.update('none');
 
   PC.update('none');VC.update('none');DC.update('none');MT.update('none');MC.update('none');
 
@@ -536,7 +605,12 @@ function updateUI(){
   document.getElementById('vAvgHold').textContent=tot>0?(holdSum/tot).toFixed(1)+'일':'-';
   const dr=ddR(candles.length-1);
   const ddel=document.getElementById('vDd');ddel.textContent=dr.toFixed(1)+'%';ddel.style.color=dr<=-5?'#D85A30':'#888';
-  const volEl=document.getElementById('vVol');if(volEl)volEl.textContent=candles[candles.length-1].volume.toLocaleString('ko-KR');
+  const volEl=document.getElementById('vVol');
+  if(volEl){
+    const amt=candles[candles.length-1].close*candles[candles.length-1].volume;
+    const abs=Math.abs(amt);
+    volEl.textContent=abs>=1e12?(amt/1e12).toFixed(1)+'조':abs>=1e8?(amt/1e8).toFixed(0)+'억':abs>=1e4?(amt/1e4).toFixed(0)+'만':amt.toLocaleString();
+  }
   document.getElementById('dayLabel').textContent='경과: '+elapsed+'일째 ('+Math.floor(elapsed/21)+'개월)';
 }
 
