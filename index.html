@@ -21,7 +21,7 @@ button:active{opacity:.8;}
 .card .val{font-size:15px;font-weight:700;}
 .cbox{border:1px solid #eaeaea;border-radius:8px;background:#fff;margin-bottom:4px;overflow:hidden;}
 .cwrap{position:relative;}
-.cwrap.pc{height:300px;}.cwrap.vc{height:90px;}.cwrap.dc{height:70px;}
+.cwrap.pc{height:320px;}.cwrap.vc{height:90px;}.cwrap.dc{height:70px;}
 .cwrap canvas{position:absolute;top:0;left:0;width:100%;height:100%;}
 .ddrow{display:flex;justify-content:space-between;padding:4px 8px 0;font-size:11px;color:#888;}
 .ddval{font-size:13px;font-weight:700;color:#D85A30;}
@@ -52,7 +52,7 @@ button:active{opacity:.8;}
 #aiTradeText,#aiPatternText{font-size:13px;line-height:1.8;color:#1a1a1a;white-space:pre-wrap;}
 @media(max-width:599px){
   .stats{grid-template-columns:repeat(2,1fr);}
-  .cwrap.pc{height:260px;}.cwrap.vc{height:75px;}.cwrap.dc{height:55px;}
+  .cwrap.pc{height:280px;}.cwrap.vc{height:75px;}.cwrap.dc{height:55px;}
 }
 </style>
 </head>
@@ -349,19 +349,27 @@ function mkChart(id,type,yEx){
 }
 const PC=new Chart(document.getElementById('cPrice'),{
   type:'line',data:{labels:[],datasets:[]},
-  options:{responsive:true,maintainAspectRatio:false,animation:false,layout:{padding:{left:4,right:4}},
+  options:{responsive:true,maintainAspectRatio:false,animation:false,layout:{padding:{left:4,right:4,bottom:4}},
     interaction:{intersect:false},
     scales:{
       x:{
+        afterBuildTicks:(axis)=>{
+          if(!window._monthLabels)return;
+          const ticks=[];
+          window._monthLabels.forEach((lbl,i)=>{
+            if(lbl)ticks.push({value:i});
+          });
+          if(ticks.length)axis.ticks=ticks;
+        },
         ticks:{
           display:true,
           font:{size:10},
-          color:'#aaa',
+          color:'#999',
           maxRotation:0,
-          autoSkip:true,
-          maxTicksLimit:20,
+          minRotation:0,
+          padding:2,
           callback:function(val,index){
-            return window._monthLabels ? (window._monthLabels[index]||'') : '';
+            return window._monthLabels ? (window._monthLabels[val]||'') : '';
           }
         },
         grid:{display:false},min:0,max:VIS+VP-1
