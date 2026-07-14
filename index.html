@@ -63,11 +63,13 @@ button:active{opacity:.8;}
 <div style="font-size:16px;font-weight:800;margin-bottom:6px;">일봉 실전차트 매매 연습</div>
 
 <!-- 종목 선택 -->
+<div class="row" style="margin-bottom:4px;">
+  <select id="stockSel" style="font-family:inherit;font-size:13px;padding:5px 8px;border-radius:8px;border:1px solid #ccc;flex:1;"></select>
+</div>
 <div class="row">
-  <select id="stockSel" style="font-family:inherit;font-size:13px;padding:5px 8px;border-radius:8px;border:1px solid #ccc;flex:1;max-width:220px;"></select>
   <button id="btnLoad" style="font-weight:700">로드</button>
-  <button id="btnRandStock">랜덤</button>
   <button id="btnReset" style="padding:6px 10px;font-size:15px;">↺</button>
+  <button id="btnRandStock">랜덤</button>
 </div>
 <span id="prLabel" style="display:none;"></span>
 <div class="banner breal" id="banner">📈 종목 로딩 중...</div>
@@ -107,7 +109,10 @@ button:active{opacity:.8;}
     <input type="checkbox" id="chkBB" style="width:14px;height:14px;accent-color:#9C6EDE;cursor:pointer;">
     볼린저밴드(20,2)
   </label>
-  <span style="font-size:13px;font-weight:600;" id="dayLabel">경과: 0일째 (0개월)</span>
+  <div style="display:flex;align-items:center;gap:10px;">
+    <span id="vLastChg" style="font-size:13px;font-weight:700;"></span>
+    <span style="font-size:13px;font-weight:600;" id="dayLabel">경과: 0일째 (0개월)</span>
+  </div>
 </div>
 
 <!-- 캔들 차트 -->
@@ -342,7 +347,31 @@ function mkChart(id,type,yEx){
       plugins:{legend:{display:false},tooltip:{enabled:false},ann:{list:[]}}},plugins:[]
   });
 }
-const PC=mkChart('cPrice','line');
+const PC=new Chart(document.getElementById('cPrice'),{
+  type:'line',data:{labels:[],datasets:[]},
+  options:{responsive:true,maintainAspectRatio:false,animation:false,layout:{padding:{left:4,right:4}},
+    interaction:{intersect:false},
+    scales:{
+      x:{
+        ticks:{
+          display:true,
+          font:{size:10},
+          color:'#aaa',
+          maxRotation:0,
+          autoSkip:true,
+          maxTicksLimit:8,
+          callback:function(val){
+            const lbl=this.getLabelForValue(val);
+            return lbl||'';
+          }
+        },
+        grid:{display:false},min:0,max:VIS+VP-1
+      },
+      y:{position:'right',ticks:{font:{size:11},padding:6,callback:v=>Math.round(v).toLocaleString('ko-KR')},afterFit:s=>{s.width=64;},grid:{color:'rgba(128,128,128,.1)'}}
+    },
+    plugins:{legend:{display:false},tooltip:{enabled:false},ann:{list:[]}}
+  },plugins:[]
+});
 const VC=mkChart('cVol','bar',{beginAtZero:true,ticks:{font:{size:10},padding:6,callback:v=>{
   const abs=Math.abs(v);
   if(abs>=1e12)return(v/1e12).toFixed(0)+'조';
@@ -455,7 +484,23 @@ function buildVA(){
 function refresh(){
   if(!candles.length)return;
   const s=vs(),lbls=mkLbl();
-  PC.data.labels=lbls;
+  // 월 표시용 레이블 생성 (실제종목만 date 있음, 없으면 빈 문자열)
+  const vs2=vs();
+  const monthLabels=[];
+  let lastMonth='';
+  for(let i=vs2;i<candles.length;i++){
+    const date=candles[i].date;
+    if(date&&date.length>=6){
+      const m=date.slice(4,6);
+      if(m!==lastMonth){monthLabels.push(m+'월');lastMonth=m;}
+      else monthLabels.push('');
+    }else{
+      monthLabels.push('');
+    }
+  }
+  while(monthLabels.length<VIS)monthLabels.unshift('');
+  for(let i=0;i<VP;i++)monthLabels.push('');
+  PC.data.labels=monthLabels;
   PC.data.datasets[0].data=vdata(i=>ma(10,i));
   PC.data.datasets[1].data=vdata(i=>ma(40,i));
   PC.data.datasets[2].data=showBB?vdata(i=>bbUpper(i)):vdata(()=>null);
@@ -612,6 +657,13 @@ function updateUI(){
     volEl.textContent=abs>=1e12?(amt/1e12).toFixed(1)+'조':abs>=1e8?(amt/1e8).toFixed(0)+'억':abs>=1e4?(amt/1e4).toFixed(0)+'만':amt.toLocaleString();
   }
   document.getElementById('dayLabel').textContent='경과: '+elapsed+'일째 ('+Math.floor(elapsed/21)+'개월)';
+  // 최신 캔들 등락률 표시
+  const chgEl=document.getElementById('vLastChg');
+  if(chgEl&&candles.length>=2){
+    const chg=(last.close-candles[candles.length-2].close)/candles[candles.length-2].close*100;
+    chgEl.textContent=(chg>=0?'+':'')+chg.toFixed(2)+'%';
+    chgEl.style.color=chg>0?'#E24B4A':chg<0?'#378ADD':'#1a1a1a';
+  }
 }
 
 // ── 매매 ─────────────────────────────────────────────────────
