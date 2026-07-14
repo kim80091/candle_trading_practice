@@ -555,7 +555,7 @@ function refresh(){
   const bbwEl=document.getElementById('vBBW');
   if(bbwEl&&bbwNow!==null){
     bbwEl.textContent=bbwNow.toFixed(1);
-    bbwEl.style.color=bbwNow>=5?'#E24B4A':bbwNow<=-5?'#378ADD':'#9C6EDE';
+    bbwEl.style.color=bbwNow>0?'#E24B4A':bbwNow<0?'#378ADD':'#1a1a1a';
   }
   BW.update('none');
 
