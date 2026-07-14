@@ -359,10 +359,9 @@ const PC=new Chart(document.getElementById('cPrice'),{
           color:'#aaa',
           maxRotation:0,
           autoSkip:true,
-          maxTicksLimit:8,
-          callback:function(val){
-            const lbl=this.getLabelForValue(val);
-            return lbl||'';
+          maxTicksLimit:20,
+          callback:function(val,index){
+            return window._monthLabels ? (window._monthLabels[index]||'') : '';
           }
         },
         grid:{display:false},min:0,max:VIS+VP-1
@@ -484,7 +483,7 @@ function buildVA(){
 function refresh(){
   if(!candles.length)return;
   const s=vs(),lbls=mkLbl();
-  // 월 표시용 레이블 생성 (실제종목만 date 있음, 없으면 빈 문자열)
+  // 월 표시용 레이블 생성 (window._monthLabels에 저장, x축 callback에서 참조)
   const vs2=vs();
   const monthLabels=[];
   let lastMonth='';
@@ -500,7 +499,8 @@ function refresh(){
   }
   while(monthLabels.length<VIS)monthLabels.unshift('');
   for(let i=0;i<VP;i++)monthLabels.push('');
-  PC.data.labels=monthLabels;
+  window._monthLabels=monthLabels;
+  PC.data.labels=lbls;
   PC.data.datasets[0].data=vdata(i=>ma(10,i));
   PC.data.datasets[1].data=vdata(i=>ma(40,i));
   PC.data.datasets[2].data=showBB?vdata(i=>bbUpper(i)):vdata(()=>null);
@@ -796,7 +796,7 @@ async function loadReal(code){
     const js=await res.json();
     if(js.error)throw new Error(js.error);
     if(!js.candles||js.candles.length<10)throw new Error('데이터 부족');
-    const allCandles=js.candles.map(d=>({open:+d.open,high:+d.high,low:+d.low,close:+d.close,volume:+d.volume})).filter(d=>d.open>0&&d.close>0);
+    const allCandles=js.candles.map(d=>({date:d.date,open:+d.open,high:+d.high,low:+d.low,close:+d.close,volume:+d.volume})).filter(d=>d.open>0&&d.close>0);
     const total=allCandles.length;
     const minStart=Math.max(80,Math.floor(total*0.1));
     const maxStart=Math.floor(total*0.8);
