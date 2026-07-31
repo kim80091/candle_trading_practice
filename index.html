@@ -624,8 +624,9 @@ PC.options.scales.x.ticks={
 };
 PC.options.scales.x.afterBuildTicks=function(axis){
   const s=vs(),pad=padOffset();
+  const visibleCount=Math.min(VIS,candles.length-s); // 실제 화면에 보이는 캔들 수
   const firstXi=pad;
-  const lastXi=pad+(candles.length-1-s);
+  const lastXi=pad+Math.max(0,visibleCount-1); // 화면 범위를 벗어나지 않도록 clamp
   const maxTicks=6;
   let positions=[];
   if(lastXi<=firstXi){
@@ -864,7 +865,8 @@ function mkLbl(){return Array.from({length:VIS+VP+ICHI_SHIFT},(_,i)=>i);}
 function mkLblPC(){return Array.from({length:VIS+VP+ICHI_SHIFT},(_,i)=>i);}
 function vdata(fn){
   const s=vs(),a=[];
-  for(let i=s;i<candles.length;i++)a.push(fn(i));
+  const end=Math.min(candles.length,s+VIS); // 화면에 보이는 범위로 제한
+  for(let i=s;i<end;i++)a.push(fn(i));
   while(a.length<VIS)a.unshift(null);
   for(let i=0;i<VP;i++)a.push(null);
   return a;
@@ -883,14 +885,15 @@ function vdataShift(fn,shift){
 }
 function buildPA(){
   const list=[],s=vs(),pad=padOffset();
-  for(let i=s;i<candles.length;i++){
+  const end=Math.min(candles.length,s+VIS); // 화면에 보이는 범위로 제한
+  for(let i=s;i<end;i++){
     const c=candles[i],li=pad+(i-s),up=c.close>=c.open;
     list.push({t:'box',x1:li-.35,x2:li+.35,y1:Math.min(c.open,c.close),y2:Math.max(c.open,c.close),bg:up?uC:dC});
     list.push({t:'wick',xi:li,hi:c.high,lo:c.low,cl:up?uC:dC});
     if(volSignal(i))list.push({t:'dot',xi:li,yi:c.high});
   }
   trades.forEach(t=>{
-    if(t.i<s||t.i>=candles.length)return;
+    if(t.i<s||t.i>=end)return;
     const c=candles[t.i],li=pad+(t.i-s);
     list.push({t:'arrow',xi:li,yi:t.buy?c.low:c.high,cl:t.buy?bC:sC,up:t.buy,half:t.half});
   });
@@ -917,7 +920,8 @@ function refresh(){
   PC.data.datasets[5].data=vdata(i=>bbLower(i));
   PC.options.plugins.ann.list=buildPA();
   let mn=Infinity,mx=-Infinity;
-  for(let i=s;i<candles.length;i++){
+  const yEnd=Math.min(candles.length,s+VIS);
+  for(let i=s;i<yEnd;i++){
     if(candles[i].low<mn)mn=candles[i].low;
     if(candles[i].high>mx)mx=candles[i].high;
     if(showBB){
