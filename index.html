@@ -75,6 +75,10 @@ button:active{opacity:.8;}
 body.review-mode .tradingOnly,
 body.review-mode #tradingOnlyTop,
 body.review-mode #tradingOnlyBottom{display:none!important;}
+body.btc-mode .tradingOnly,
+body.btc-mode #tradingOnlyTop,
+body.btc-mode #tradingOnlyBottom,
+body.btc-mode .stockOnly{display:none!important;}
 .stocklist-item{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border:1px solid #eaeaea;border-radius:8px;margin-bottom:5px;cursor:pointer;background:#fff;}
 .stocklist-item:active{background:#F0F8FF;}
 .stocklist-item .sname{font-size:14px;font-weight:600;color:#1a1a1a;}
@@ -91,13 +95,14 @@ body.review-mode #tradingOnlyBottom{display:none!important;}
 <div class="tabrow">
   <button id="tabChart" class="tabbtn active">📊 차트</button>
   <button id="tabList" class="tabbtn">🔍 종목 리뷰</button>
+  <button id="tabBTC" class="tabbtn">₿ 비트코인</button>
 </div>
 
 <div id="chartView">
-<div id="stockRow" class="show">
+<div id="stockRow" class="show stockOnly">
   <select id="stockSel"><option>종목 로딩 중...</option></select>
 </div>
-<div id="stockBtnRow" class="show">
+<div id="stockBtnRow" class="show stockOnly">
   <button id="btnLoad" style="font-weight:700">로드</button>
   <button id="btnReset" title="새로고침">↺</button>
   <button id="btnRandStock">랜덤</button>
@@ -1548,33 +1553,80 @@ document.getElementById('btnZoomOutM').onclick=zoomOut;
   const canvas=document.getElementById('cPrice');
   if(!canvas)return;
   let dragging=false, startX=0, startOffset=0;
+  let lastX=0, lastT=0, velocity=0; // 관성 스크롤용
+  let inertiaRAF=null;
 
   function candleWidthPx(){
     const rect=canvas.getBoundingClientRect();
     return rect.width/(VIS+VP);
   }
+  function clampOffset(v){
+    const maxOffset=Math.max(0,candles.length-VIS);
+    return Math.max(0,Math.min(maxOffset,v));
+  }
+  function stopInertia(){
+    if(inertiaRAF){cancelAnimationFrame(inertiaRAF);inertiaRAF=null;}
+  }
   function onDown(clientX){
-    if(CUR_TAB!=='review')return; // 종목 리뷰 탭에서만 슬라이딩 허용
+    if(CUR_TAB!=='review'&&CUR_TAB!=='btc')return; // 종목 리뷰/비트코인 탭에서만 슬라이딩 허용
+    stopInertia();
     dragging=true; startX=clientX; startOffset=viewOffset;
+    lastX=clientX; lastT=performance.now(); velocity=0;
     canvas.style.cursor='grabbing';
   }
   function onMove(clientX){
     if(!dragging)return;
+    const now=performance.now();
+    const dt=now-lastT;
+    if(dt>0){
+      // 손가락 이동속도(캔들/ms) 계산 — 관성 스크롤에 사용
+      const cw=candleWidthPx();
+      if(cw>0)velocity=((clientX-lastX)/cw)/dt;
+    }
+    lastX=clientX; lastT=now;
+
     const dx=clientX-startX;
     const cw=candleWidthPx();
     if(cw<=0)return;
     const deltaCandles=Math.round(dx/cw);
-    const maxOffset=Math.max(0,candles.length-VIS);
-    let next=startOffset-deltaCandles; // 오른쪽으로 드래그(dx>0)하면 과거로 이동
-    next=Math.max(0,Math.min(maxOffset,next));
+    // 손으로 미는 방향과 차트가 같은 방향으로 이동하도록 부호 반전
+    let next=startOffset+deltaCandles;
+    next=clampOffset(next);
     if(next!==viewOffset){
       viewOffset=next;
       refresh();
     }
   }
   function onUp(){
+    if(!dragging)return;
     dragging=false;
-    canvas.style.cursor=CUR_TAB==='review'?'grab':'default';
+    canvas.style.cursor=(CUR_TAB==='review'||CUR_TAB==='btc')?'grab':'default';
+
+    // 관성 스크롤: 뗄 때 속도가 남아있으면 감속하며 계속 이동
+    let v=velocity; // 캔들/ms
+    if(Math.abs(v)<0.02)return; // 너무 느리면 관성 생략
+    const friction=0.94; // 매 프레임 감속 비율
+    let lastTs=performance.now();
+    function step(ts){
+      const dt=ts-lastTs;
+      lastTs=ts;
+      // 같은 방향 반전 규칙 적용 (미는 방향=이동 방향)
+      const deltaCandles=v*dt;
+      let next=clampOffset(viewOffset+deltaCandles);
+      if(next!==viewOffset){
+        viewOffset=next;
+        refresh();
+      }
+      v*=Math.pow(friction,dt/16.7); // 프레임 간격 보정 감속
+      if(Math.abs(v)>0.005&&next>0&&next<Math.max(0,candles.length-VIS)){
+        inertiaRAF=requestAnimationFrame(step);
+      }else if(Math.abs(v)>0.005&&(next<=0||next>=Math.max(0,candles.length-VIS))){
+        inertiaRAF=null; // 경계에 닿으면 관성 종료
+      }else{
+        inertiaRAF=null;
+      }
+    }
+    inertiaRAF=requestAnimationFrame(step);
   }
 
   // 마우스
@@ -1587,51 +1639,59 @@ document.getElementById('btnZoomOutM').onclick=zoomOut;
     if(e.touches.length===1)onDown(e.touches[0].clientX);
   },{passive:true});
   canvas.addEventListener('touchmove',e=>{
-    if(CUR_TAB==='review'&&e.touches.length===1){onMove(e.touches[0].clientX);e.preventDefault();}
+    if((CUR_TAB==='review'||CUR_TAB==='btc')&&e.touches.length===1){onMove(e.touches[0].clientX);e.preventDefault();}
   },{passive:false});
   canvas.addEventListener('touchend',onUp);
   canvas.addEventListener('touchcancel',onUp);
 })();
 
-// ── 탭 전환 (차트 / 전체 종목) ─────────────────────────────────
-// ── 탭 전환: 차트(매매) ↔ 종목 리뷰(관람 전용) ─────────────────
-// 종목 리뷰 진입 시 차트/매매 상태를 건드리지 않도록,
-// 리뷰용 스냅샷(전체 캔들+최신 위치)을 별도로 저장해두고 전환 시 교체한다.
+// ── 탭 전환: 차트(매매) ↔ 종목 리뷰(관람 전용) ↔ 비트코인(관람 전용) ──
+// 차트 탭이 아닌 곳으로 이동할 때는 매매 상태를 스냅샷으로 저장해두고,
+// 차트 탭으로 복귀하면 그대로 되돌린다.
 let _savedTradingState=null; // 차트 탭으로 복귀할 때 되돌릴 상태
+let _savedReviewStock=null; // 종목 리뷰에서 보던 종목(코드) — 탭 전환 후 복귀 시 유지용
 
 function switchTab(tab){
   const tabChart=document.getElementById('tabChart');
   const tabList=document.getElementById('tabList');
+  const tabBTC=document.getElementById('tabBTC');
 
-  if(tab==='review'){
-    if(CUR_TAB==='review')return;
-    // 현재(차트 탭) 상태를 저장해두고, 종목 리뷰용으로 화면만 전환
+  if(tab===CUR_TAB)return;
+
+  // 차트 탭에서 벗어나는 순간 매매 상태 스냅샷 저장 (최초 1회만)
+  if(CUR_TAB==='chart'){
     _savedTradingState={
       candles:candles.slice(),
       allCandles:window._realAllCandles,
       nextIdx:window._realNextIdx,
       viewOffset:viewOffset,
-      timerWasOn:!!timer,
     };
     stopT();
+  }
+
+  document.body.classList.remove('review-mode','btc-mode');
+  tabChart.className='tabbtn';
+  tabList.className='tabbtn';
+  tabBTC.className='tabbtn';
+
+  if(tab==='review'){
     CUR_TAB='review';
     document.body.classList.add('review-mode');
-    tabChart.className='tabbtn';
     tabList.className='tabbtn active';
-
     // 종목 리뷰: 항상 전체 데이터의 "최신" 구간을 고정으로 보여줌
     if(window._realAllCandles&&window._realAllCandles.length){
       candles=window._realAllCandles.slice();
       viewOffset=0;
     }
     refresh();
+  }else if(tab==='btc'){
+    CUR_TAB='btc';
+    document.body.classList.add('btc-mode');
+    tabBTC.className='tabbtn active';
+    loadBTC();
   }else{
-    if(CUR_TAB==='chart')return;
     CUR_TAB='chart';
-    document.body.classList.remove('review-mode');
     tabChart.className='tabbtn active';
-    tabList.className='tabbtn';
-
     // 차트 탭으로 복귀: 매매 진행 상태를 그대로 복원
     if(_savedTradingState){
       candles=_savedTradingState.candles;
@@ -1645,6 +1705,47 @@ function switchTab(tab){
 }
 document.getElementById('tabChart').onclick=()=>switchTab('chart');
 document.getElementById('tabList').onclick=()=>switchTab('review');
+document.getElementById('tabBTC').onclick=()=>switchTab('btc');
+
+// ── 비트코인 데이터 로드 (바이낸스 공개 API, BTC/USDT 일봉) ────
+async function loadBTC(){
+  showOv('비트코인(BTC/USDT) 불러오는 중...');
+  try{
+    const res=await fetch('https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1d&limit=1000');
+    if(!res.ok)throw new Error('HTTP '+res.status);
+    const raw=await res.json();
+    // 바이낸스 kline 형식: [openTime, open, high, low, close, volume, closeTime, ...]
+    const allCandles=raw.map(k=>{
+      const d=new Date(k[0]);
+      const y=d.getUTCFullYear();
+      const m=String(d.getUTCMonth()+1).padStart(2,'0');
+      const day=String(d.getUTCDate()).padStart(2,'0');
+      return{
+        date:y+m+day,
+        open:+k[1],high:+k[2],low:+k[3],close:+k[4],volume:+k[5],
+      };
+    }).filter(d=>d.open>0&&d.close>0);
+
+    if(!allCandles.length)throw new Error('데이터 없음');
+
+    resetStats();
+    candles=allCandles.slice();
+    window._realAllCandles=allCandles;
+    window._realNextIdx=allCandles.length;
+    viewOffset=0;
+    curStock={name:'비트코인',code:'BTCUSDT',count:allCandles.length,
+      from:allCandles[0].date,to:allCandles[allCandles.length-1].date,
+      totalCandles:allCandles.length};
+
+    const lastDate=allCandles[allCandles.length-1]?.date||'';
+    setBanner('₿ 비트코인(BTC/USDT) | 전체 '+allCandles.length+'일 | 최신('+lastDate+')','breal');
+    hideOv();
+    refresh();
+  }catch(e){
+    hideOv();
+    alert('비트코인 데이터 로드 실패: '+e.message);
+  }
+}
 
 [['s05',.5],['s1',1],['s2',2],['s3',3],['s4',4]].forEach(([id,v])=>{
   document.getElementById(id).onclick=()=>{
