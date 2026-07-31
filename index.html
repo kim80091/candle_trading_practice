@@ -1556,15 +1556,35 @@ document.getElementById('btnZoomOutM').onclick=zoomOut;
   let lastX=0, lastT=0, velocity=0; // 관성 스크롤용
   let inertiaRAF=null;
 
-  // refresh()가 무거우므로 프레임당 1회만 실행되도록 스로틀링
-  let refreshPending=false;
+  // refresh()가 무거우므로(11개 Chart.js 인스턴스 재계산) 최소 간격을 두고 실행.
+  // requestAnimationFrame만으로는 refresh 자체가 16ms를 넘길 때 콜백이 계속
+  // 밀려 쌓이며 "멈춘 것처럼" 보이는 문제가 있어, 시간 기반 스로틀로 확실히 제한한다.
+  const REFRESH_MIN_INTERVAL=60; // ms — 이 간격보다 자주는 refresh 안 함
+  let lastRefreshAt=0;
+  let refreshTimer=null;
+  let pendingRefresh=false;
   function scheduleRefresh(){
-    if(refreshPending)return;
-    refreshPending=true;
-    requestAnimationFrame(()=>{
-      refreshPending=false;
-      refresh();
-    });
+    pendingRefresh=true;
+    const now=performance.now();
+    const elapsed=now-lastRefreshAt;
+    if(elapsed>=REFRESH_MIN_INTERVAL){
+      runRefreshNow();
+    }else if(!refreshTimer){
+      refreshTimer=setTimeout(()=>{
+        refreshTimer=null;
+        if(pendingRefresh)runRefreshNow();
+      },REFRESH_MIN_INTERVAL-elapsed);
+    }
+  }
+  function runRefreshNow(){
+    pendingRefresh=false;
+    lastRefreshAt=performance.now();
+    refresh();
+  }
+  function flushRefresh(){
+    // 드래그/관성 종료 시 마지막 상태를 확실히 반영
+    if(refreshTimer){clearTimeout(refreshTimer);refreshTimer=null;}
+    runRefreshNow();
   }
 
   function candleWidthPx(){
@@ -1581,6 +1601,8 @@ document.getElementById('btnZoomOutM').onclick=zoomOut;
   function onDown(clientX){
     if(CUR_TAB!=='review'&&CUR_TAB!=='btc')return; // 종목 리뷰/비트코인 탭에서만 슬라이딩 허용
     stopInertia();
+    if(refreshTimer){clearTimeout(refreshTimer);refreshTimer=null;} // 이전 예약된 refresh 정리
+    pendingRefresh=false;
     dragging=true; startX=clientX; startOffset=viewOffset;
     lastX=clientX; lastT=performance.now(); velocity=0;
     canvas.style.cursor='grabbing';
@@ -1608,20 +1630,20 @@ document.getElementById('btnZoomOutM').onclick=zoomOut;
     next=clampOffset(next);
     if(next!==viewOffset){
       viewOffset=next;
-      scheduleRefresh(); // 매 픽셀마다가 아니라 프레임당 1회만 갱신
+      scheduleRefresh(); // 시간 기반 스로틀 — 과도한 refresh 호출 방지
     }
   }
   function onUp(){
     if(!dragging)return;
     dragging=false;
     canvas.style.cursor=(CUR_TAB==='review'||CUR_TAB==='btc')?'grab':'default';
+    flushRefresh(); // 드래그 종료 시점 최신 위치를 확실히 반영
 
     // 관성 스크롤: 뗄 때 속도가 남아있으면 감속하며 계속 이동
     let v=velocity; // 캔들/ms
     if(Math.abs(v)<0.02)return; // 너무 느리면 관성 생략
     const friction=0.94; // 매 프레임 감속 비율
     let lastTs=performance.now();
-    const maxOffset0=Math.max(0,candles.length-VIS);
 
     function step(ts){
       inertiaRAF=null; // 이번 프레임 처리 시작 시 먼저 비워서 중복 예약 방지
@@ -1641,8 +1663,10 @@ document.getElementById('btnZoomOutM').onclick=zoomOut;
       const hitEdge=(next<=0||next>=maxOffset);
       if(Math.abs(v)>0.005&&!hitEdge){
         inertiaRAF=requestAnimationFrame(step);
+      }else{
+        // 관성 종료 시점에도 마지막 위치를 확실히 반영
+        flushRefresh();
       }
-      // 그 외(속도 소진 또는 경계 도달)엔 자연 종료 — inertiaRAF는 이미 null
     }
     inertiaRAF=requestAnimationFrame(step);
   }
