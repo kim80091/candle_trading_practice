@@ -1556,6 +1556,17 @@ document.getElementById('btnZoomOutM').onclick=zoomOut;
   let lastX=0, lastT=0, velocity=0; // 관성 스크롤용
   let inertiaRAF=null;
 
+  // refresh()가 무거우므로 프레임당 1회만 실행되도록 스로틀링
+  let refreshPending=false;
+  function scheduleRefresh(){
+    if(refreshPending)return;
+    refreshPending=true;
+    requestAnimationFrame(()=>{
+      refreshPending=false;
+      refresh();
+    });
+  }
+
   function candleWidthPx(){
     const rect=canvas.getBoundingClientRect();
     return rect.width/(VIS+VP);
@@ -1579,9 +1590,12 @@ document.getElementById('btnZoomOutM').onclick=zoomOut;
     const now=performance.now();
     const dt=now-lastT;
     if(dt>0){
-      // 손가락 이동속도(캔들/ms) 계산 — 관성 스크롤에 사용
+      // 손가락 이동속도(캔들/ms) 계산 — 관성 스크롤에 사용. 튀는 값 방지 위해 clamp
       const cw=candleWidthPx();
-      if(cw>0)velocity=((clientX-lastX)/cw)/dt;
+      if(cw>0){
+        const v=((clientX-lastX)/cw)/dt;
+        velocity=Math.max(-2,Math.min(2,v)); // 순간 튐 방지
+      }
     }
     lastX=clientX; lastT=now;
 
@@ -1594,7 +1608,7 @@ document.getElementById('btnZoomOutM').onclick=zoomOut;
     next=clampOffset(next);
     if(next!==viewOffset){
       viewOffset=next;
-      refresh();
+      scheduleRefresh(); // 매 픽셀마다가 아니라 프레임당 1회만 갱신
     }
   }
   function onUp(){
@@ -1607,24 +1621,28 @@ document.getElementById('btnZoomOutM').onclick=zoomOut;
     if(Math.abs(v)<0.02)return; // 너무 느리면 관성 생략
     const friction=0.94; // 매 프레임 감속 비율
     let lastTs=performance.now();
+    const maxOffset0=Math.max(0,candles.length-VIS);
+
     function step(ts){
-      const dt=ts-lastTs;
+      inertiaRAF=null; // 이번 프레임 처리 시작 시 먼저 비워서 중복 예약 방지
+      let dt=ts-lastTs;
       lastTs=ts;
-      // 같은 방향 반전 규칙 적용 (미는 방향=이동 방향)
+      dt=Math.min(dt,50); // 탭 전환/백그라운드 등으로 dt가 튀는 경우 방지
+
       const deltaCandles=v*dt;
-      let next=clampOffset(viewOffset+deltaCandles);
+      const next=clampOffset(viewOffset+deltaCandles);
       if(next!==viewOffset){
         viewOffset=next;
-        refresh();
+        scheduleRefresh();
       }
       v*=Math.pow(friction,dt/16.7); // 프레임 간격 보정 감속
-      if(Math.abs(v)>0.005&&next>0&&next<Math.max(0,candles.length-VIS)){
+
+      const maxOffset=Math.max(0,candles.length-VIS);
+      const hitEdge=(next<=0||next>=maxOffset);
+      if(Math.abs(v)>0.005&&!hitEdge){
         inertiaRAF=requestAnimationFrame(step);
-      }else if(Math.abs(v)>0.005&&(next<=0||next>=Math.max(0,candles.length-VIS))){
-        inertiaRAF=null; // 경계에 닿으면 관성 종료
-      }else{
-        inertiaRAF=null;
       }
+      // 그 외(속도 소진 또는 경계 도달)엔 자연 종료 — inertiaRAF는 이미 null
     }
     inertiaRAF=requestAnimationFrame(step);
   }
